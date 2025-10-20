@@ -66,12 +66,12 @@ Add the plugin to your NetBox configuration in `configuration.py`:
 
 ```python
 PLUGINS = [
-    'netbox_wug_sync',
+  'netbox-wug-sync',
 ]
 
 # Plugin configuration
 PLUGINS_CONFIG = {
-    'netbox_wug_sync': {
+  'netbox-wug-sync': {
         # Required settings (configure via NetBox UI)
         'wug_host': None,           # Set via connection config
         'wug_username': None,       # Set via connection config  
@@ -96,7 +96,7 @@ PLUGINS_CONFIG = {
 
 ```bash
 cd /opt/netbox
-python manage.py migrate netbox_wug_sync
+python manage.py migrate netbox-wug-sync
 ```
 
 ### 4. Restart NetBox
@@ -206,8 +206,8 @@ The plugin automatically schedules sync jobs based on the configured interval. J
 Create custom scripts for advanced sync scenarios:
 
 ```python
-from netbox_wug_sync.models import WUGConnection
-from netbox_wug_sync.jobs import WUGSyncJob
+from netbox-wug-sync.models import WUGConnection
+from netbox-wug-sync.jobs import WUGSyncJob
 
 # Trigger sync for specific connection
 connection = WUGConnection.objects.get(name='Production WUG')
@@ -277,7 +277,7 @@ Enable debug mode for detailed logging:
 
 ```python
 PLUGINS_CONFIG = {
-    'netbox_wug_sync': {
+  'netbox-wug-sync': {
         'debug_mode': True,
     }
 }
@@ -334,9 +334,9 @@ The project uses:
 
 Run code quality checks:
 ```bash
-black netbox_wug_sync/
-isort netbox_wug_sync/
-flake8 netbox_wug_sync/
+black netbox-wug-sync/
+isort netbox-wug-sync/
+flake8 netbox-wug-sync/
 ```
 
 ## Security Considerations

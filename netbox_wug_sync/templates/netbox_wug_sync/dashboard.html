@@ -97,7 +97,7 @@
                                 {% for connection in connections %}
                                 <tr>
                                     <td>
-                                        <a href="{% url 'plugins:netbox_wug_sync:wugconnection' pk=connection.pk %}">
+                                        <a href="{% url 'plugins:netbox-wug-sync:wugconnection' pk=connection.pk %}">
                                             {{ connection.name }}
                                         </a>
                                     </td>
@@ -129,7 +129,7 @@
                     <div class="text-center py-4">
                         <i class="mdi mdi-server-off text-muted" style="font-size: 3rem;"></i>
                         <p class="text-muted mt-2">No active connections found</p>
-                        <a href="{% url 'plugins:netbox_wug_sync:wugconnection_add' %}" class="btn btn-primary">
+                        <a href="{% url 'plugins:netbox-wug-sync:wugconnection_add' %}" class="btn btn-primary">
                             <i class="mdi mdi-plus"></i> Add Connection
                         </a>
                     </div>
@@ -168,7 +168,7 @@
                                 {% for log in recent_logs %}
                                 <tr>
                                     <td>
-                                        <a href="{% url 'plugins:netbox_wug_sync:wugsynclog' pk=log.pk %}">
+                                        <a href="{% url 'plugins:netbox-wug-sync:wugsynclog' pk=log.pk %}">
                                             {{ log.connection.name }}
                                         </a>
                                     </td>
