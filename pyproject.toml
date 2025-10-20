@@ -1,0 +1,77 @@
+# See PEP 518 for the spec of this file
+# https://www.python.org/dev/peps/pep-0518/
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "netbox-wug-sync"
+version = "0.1.0"
+authors = [
+    {name = "NetBox Admin", email = "admin@example.com"},
+]
+description = "NetBox plugin for synchronizing devices with WhatsUp Gold"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: Apache Software License",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Networking",
+]
+keywords = ["netbox", "plugin", "whatsup-gold", "network-monitoring", "device-sync"]
+
+dependencies = [
+    "requests>=2.25.1",
+    "django>=4.2",
+    "netbox>=4.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-django>=4.5.0",
+    "black>=22.0.0",
+    "isort>=5.10.0",
+    "flake8>=4.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/yourusername/netbox-wug-sync"
+Documentation = "https://github.com/yourusername/netbox-wug-sync/wiki"
+Repository = "https://github.com/yourusername/netbox-wug-sync"
+"Bug Tracker" = "https://github.com/yourusername/netbox-wug-sync/issues"
+
+[tool.setuptools.packages.find]
+include = ["netbox_wug_sync*"]
+
+[tool.setuptools.package-data]
+netbox_wug_sync = [
+    "templates/**/*.html",
+    "static/**/*",
+]
+
+[tool.black]
+line-length = 120
+target-version = ['py310']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+    migrations/
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 120
+known_first_party = ["netbox_wug_sync"]
+skip_glob = ["*/migrations/*"]

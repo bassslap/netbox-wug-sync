@@ -1,0 +1,160 @@
+{% extends 'generic/object_list.html' %}
+{% load i18n %}
+
+{% block title %}WhatsUp Gold Connections{% endblock %}
+
+{% block content_title %}
+<i class="mdi mdi-server-network"></i> WhatsUp Gold Connections
+{% endblock %}
+
+{% block controls %}
+<a href="{% url 'plugins:netbox_wug_sync:wugconnection_add' %}" class="btn btn-primary">
+    <i class="mdi mdi-plus-thick"></i> Add Connection
+</a>
+{% endblock %}
+
+{% block table %}
+<div class="table-responsive">
+    <table class="table table-striped table-hover">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Host</th>
+                <th>Port</th>
+                <th>Active</th>
+                <th>Last Sync</th>
+                <th>Device Count</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for connection in object_list %}
+            <tr>
+                <td>
+                    <a href="{% url 'plugins:netbox_wug_sync:wugconnection' pk=connection.pk %}">
+                        {{ connection.name }}
+                    </a>
+                </td>
+                <td>{{ connection.host }}</td>
+                <td>{{ connection.port }}</td>
+                <td>
+                    {% if connection.is_active %}
+                        <span class="badge bg-success">Active</span>
+                    {% else %}
+                        <span class="badge bg-secondary">Inactive</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if connection.last_sync %}
+                        {{ connection.last_sync|timesince }} ago
+                    {% else %}
+                        <span class="text-muted">Never</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <a href="{% url 'plugins:netbox_wug_sync:wugdevice_list' %}?connection={{ connection.pk }}">
+                        {{ connection.devices.count }} devices
+                    </a>
+                </td>
+                <td>
+                    <div class="btn-group btn-group-sm">
+                        <a href="{% url 'plugins:netbox_wug_sync:wugconnection_edit' pk=connection.pk %}" 
+                           class="btn btn-outline-warning">
+                            <i class="mdi mdi-pencil"></i>
+                        </a>
+                        <button class="btn btn-outline-primary" 
+                                title="Test Connection"
+                                onclick="testConnection({{ connection.pk }})">
+                            <i class="mdi mdi-connection"></i>
+                        </button>
+                        <button class="btn btn-outline-success" 
+                                title="Trigger Sync"
+                                onclick="triggerSync({{ connection.pk }})">
+                            <i class="mdi mdi-sync"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="7" class="text-center">
+                    <div class="py-4">
+                        <i class="mdi mdi-server-off text-muted" style="font-size: 3rem;"></i>
+                        <p class="text-muted mt-2">No connections found</p>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<script>
+function testConnection(connectionId) {
+    const button = event.target.closest('button');
+    const originalHtml = button.innerHTML;
+    
+    button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i>';
+    button.disabled = true;
+    
+    fetch(`/plugins/wug-sync/connections/${connectionId}/test/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(`Connection test successful! Found ${data.device_count || 'unknown'} devices.`);
+        } else {
+            alert(`Connection test failed: ${data.message}`);
+        }
+    })
+    .catch(error => {
+        alert('Error testing connection: ' + error.message);
+    })
+    .finally(() => {
+        button.innerHTML = originalHtml;
+        button.disabled = false;
+    });
+}
+
+function triggerSync(connectionId) {
+    if (confirm('Are you sure you want to trigger a sync for this connection?')) {
+        const button = event.target.closest('button');
+        const originalHtml = button.innerHTML;
+        
+        button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i>';
+        button.disabled = true;
+        
+        fetch(`/plugins/wug-sync/connections/${connectionId}/sync/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert(data.message);
+                location.reload();
+            } else {
+                alert(`Sync failed: ${data.message}`);
+            }
+        })
+        .catch(error => {
+            alert('Error triggering sync: ' + error.message);
+        })
+        .finally(() => {
+            button.innerHTML = originalHtml;
+            button.disabled = false;
+        });
+    }
+}
+</script>
+
+{% csrf_token %}
+{% endblock %}

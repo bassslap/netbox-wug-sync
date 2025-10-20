@@ -1,0 +1,279 @@
+{% extends 'base.html' %}
+{% load i18n %}
+{% load static %}
+
+{% block title %}WhatsUp Gold Sync Dashboard{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1>{% trans "WhatsUp Gold Sync Dashboard" %}</h1>
+    </div>
+</div>
+
+<!-- Statistics Cards -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card border-primary">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <i class="mdi mdi-server-network text-primary me-3" style="font-size: 2rem;"></i>
+                    <div>
+                        <h5 class="card-title mb-0">{{ connections|length }}</h5>
+                        <p class="card-text text-muted">Active Connections</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="card border-success">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <i class="mdi mdi-devices text-success me-3" style="font-size: 2rem;"></i>
+                    <div>
+                        <h5 class="card-title mb-0">{{ synced_devices }}</h5>
+                        <p class="card-text text-muted">Synced Devices</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="card border-warning">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <i class="mdi mdi-clock text-warning me-3" style="font-size: 2rem;"></i>
+                    <div>
+                        <h5 class="card-title mb-0">{{ pending_devices }}</h5>
+                        <p class="card-text text-muted">Pending Sync</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="card border-danger">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <i class="mdi mdi-alert-circle text-danger me-3" style="font-size: 2rem;"></i>
+                    <div>
+                        <h5 class="card-title mb-0">{{ error_devices }}</h5>
+                        <p class="card-text text-muted">Sync Errors</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Connections Overview -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="mdi mdi-server-network me-2"></i>
+                    Active Connections
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if connections %}
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Host</th>
+                                    <th>Last Sync</th>
+                                    <th>Device Count</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for connection in connections %}
+                                <tr>
+                                    <td>
+                                        <a href="{% url 'plugins:netbox_wug_sync:wugconnection' pk=connection.pk %}">
+                                            {{ connection.name }}
+                                        </a>
+                                    </td>
+                                    <td>{{ connection.host }}:{{ connection.port }}</td>
+                                    <td>
+                                        {% if connection.last_sync %}
+                                            {{ connection.last_sync|timesince }} ago
+                                        {% else %}
+                                            Never
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ connection.devices.count }}</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-primary" 
+                                                onclick="testConnection({{ connection.pk }})">
+                                            <i class="mdi mdi-connection"></i> Test
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-success" 
+                                                onclick="triggerSync({{ connection.pk }})">
+                                            <i class="mdi mdi-sync"></i> Sync
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="text-center py-4">
+                        <i class="mdi mdi-server-off text-muted" style="font-size: 3rem;"></i>
+                        <p class="text-muted mt-2">No active connections found</p>
+                        <a href="{% url 'plugins:netbox_wug_sync:wugconnection_add' %}" class="btn btn-primary">
+                            <i class="mdi mdi-plus"></i> Add Connection
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Sync Logs -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="mdi mdi-clipboard-text me-2"></i>
+                    Recent Sync Activity
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if recent_logs %}
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Connection</th>
+                                    <th>Type</th>
+                                    <th>Status</th>
+                                    <th>Start Time</th>
+                                    <th>Duration</th>
+                                    <th>Devices</th>
+                                    <th>Success Rate</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for log in recent_logs %}
+                                <tr>
+                                    <td>
+                                        <a href="{% url 'plugins:netbox_wug_sync:wugsynclog' pk=log.pk %}">
+                                            {{ log.connection.name }}
+                                        </a>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-secondary">{{ log.sync_type }}</span>
+                                    </td>
+                                    <td>
+                                        {% if log.status == 'completed' %}
+                                            <span class="badge bg-success">{{ log.status }}</span>
+                                        {% elif log.status == 'running' %}
+                                            <span class="badge bg-primary">{{ log.status }}</span>
+                                        {% elif log.status == 'failed' %}
+                                            <span class="badge bg-danger">{{ log.status }}</span>
+                                        {% else %}
+                                            <span class="badge bg-warning">{{ log.status }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ log.start_time|timesince }} ago</td>
+                                    <td>
+                                        {% if log.duration %}
+                                            {% if log.duration < 60 %}
+                                                {{ log.duration|floatformat:1 }}s
+                                            {% else %}
+                                                {{ log.duration|floatformat:1|div:60 }}m
+                                            {% endif %}
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ log.devices_discovered }}</td>
+                                    <td>
+                                        <div class="progress" style="height: 20px;">
+                                            <div class="progress-bar 
+                                                {% if log.success_rate >= 90 %}bg-success
+                                                {% elif log.success_rate >= 70 %}bg-warning
+                                                {% else %}bg-danger{% endif %}" 
+                                                role="progressbar" 
+                                                style="width: {{ log.success_rate }}%">
+                                                {{ log.success_rate|floatformat:1 }}%
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="text-center py-4">
+                        <i class="mdi mdi-clipboard-text-off text-muted" style="font-size: 3rem;"></i>
+                        <p class="text-muted mt-2">No sync logs found</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- JavaScript for AJAX actions -->
+<script>
+function testConnection(connectionId) {
+    fetch(`/plugins/wug-sync/connections/${connectionId}/test/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(`Connection test successful! Found ${data.device_count || 'unknown'} devices.`);
+        } else {
+            alert(`Connection test failed: ${data.message}`);
+        }
+    })
+    .catch(error => {
+        alert('Error testing connection: ' + error.message);
+    });
+}
+
+function triggerSync(connectionId) {
+    if (confirm('Are you sure you want to trigger a sync for this connection?')) {
+        fetch(`/plugins/wug-sync/connections/${connectionId}/sync/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert(data.message);
+                location.reload(); // Refresh to show updated status
+            } else {
+                alert(`Sync failed: ${data.message}`);
+            }
+        })
+        .catch(error => {
+            alert('Error triggering sync: ' + error.message);
+        });
+    }
+}
+</script>
+
+{% csrf_token %}
+{% endblock %}
