@@ -33,7 +33,7 @@ keywords = ["netbox", "plugin", "whatsup-gold", "network-monitoring", "device-sy
 dependencies = [
     "requests>=2.25.1",
     "django>=4.2",
-    "netbox>=4.0.0",
+    #"netbox>=4.0.0",
 ]
 
 [project.optional-dependencies]
