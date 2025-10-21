@@ -1,0 +1,180 @@
+{% extends 'base/layout.html' %}
+{% load i18n %}
+{% load static %}
+
+{% block title %}WUG Devices{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">
+            <i class="mdi mdi-devices me-2 text-info"></i>
+            WhatsUp Gold Devices
+        </h1>
+    </div>
+</div>
+
+<!-- Filters and Search -->
+<div class="row mb-4">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-body">
+                <form method="get" class="row g-3">
+                    <div class="col-md-4">
+                        <input type="text" name="q" class="form-control" placeholder="Search devices..." 
+                               value="{{ request.GET.q }}">
+                    </div>
+                    <div class="col-md-3">
+                        <select name="connection" class="form-select">
+                            <option value="">All Connections</option>
+                            {% for conn in connections %}
+                            <option value="{{ conn.pk }}" {% if request.GET.connection == conn.pk|stringformat:"s" %}selected{% endif %}>
+                                {{ conn.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <select name="sync_enabled" class="form-select">
+                            <option value="">All Devices</option>
+                            <option value="true" {% if request.GET.sync_enabled == "true" %}selected{% endif %}>Sync Enabled</option>
+                            <option value="false" {% if request.GET.sync_enabled == "false" %}selected{% endif %}>Sync Disabled</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="mdi mdi-magnify"></i> Filter
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card bg-light">
+            <div class="card-body">
+                <h6 class="card-title">Device Statistics</h6>
+                <div class="row text-center">
+                    <div class="col-6">
+                        <div class="h4 text-primary">{{ total_devices }}</div>
+                        <small class="text-muted">Total Devices</small>
+                    </div>
+                    <div class="col-6">
+                        <div class="h4 text-success">{{ synced_devices }}</div>
+                        <small class="text-muted">Sync Enabled</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Devices Table -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">
+                    <i class="mdi mdi-server me-2"></i>
+                    Devices ({{ table.rows|length }})
+                </h5>
+                <div class="btn-group">
+                    <button class="btn btn-outline-success btn-sm" onclick="bulkEnableSync()">
+                        <i class="mdi mdi-check-all"></i> Enable Sync
+                    </button>
+                    <button class="btn btn-outline-warning btn-sm" onclick="bulkDisableSync()">
+                        <i class="mdi mdi-close-circle"></i> Disable Sync
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                {% if table.rows %}
+                    <div class="table-responsive">
+                        {% load django_tables2 %}
+                        {% render_table table %}
+                    </div>
+                {% else %}
+                    <div class="text-center py-5">
+                        <i class="mdi mdi-server-off text-muted" style="font-size: 3rem;"></i>
+                        <h4 class="text-muted mt-3">No Devices Found</h4>
+                        <p class="text-muted">
+                            {% if request.GET.q or request.GET.connection or request.GET.sync_enabled %}
+                                No devices match your current filters. Try adjusting your search criteria.
+                            {% else %}
+                                No devices have been synced yet. Configure and run a sync from a WhatsUp Gold connection.
+                            {% endif %}
+                        </p>
+                        <a href="{% url 'plugins:netbox_wug_sync:wugconnection_list' %}" class="btn btn-primary">
+                            <i class="mdi mdi-plus"></i> Manage Connections
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- JavaScript for bulk operations -->
+<script>
+function bulkEnableSync() {
+    const selectedDevices = getSelectedDevices();
+    if (selectedDevices.length === 0) {
+        alert('Please select devices to enable sync for.');
+        return;
+    }
+    
+    if (confirm(`Enable sync for ${selectedDevices.length} selected device(s)?`)) {
+        fetch('{% url "plugins:netbox_wug_sync:wugdevice_bulk_enable" %}', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ device_ids: selectedDevices })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        });
+    }
+}
+
+function bulkDisableSync() {
+    const selectedDevices = getSelectedDevices();
+    if (selectedDevices.length === 0) {
+        alert('Please select devices to disable sync for.');
+        return;
+    }
+    
+    if (confirm(`Disable sync for ${selectedDevices.length} selected device(s)?`)) {
+        fetch('{% url "plugins:netbox_wug_sync:wugdevice_bulk_disable" %}', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ device_ids: selectedDevices })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        });
+    }
+}
+
+function getSelectedDevices() {
+    const checkboxes = document.querySelectorAll('input[name="pk"]:checked');
+    return Array.from(checkboxes).map(cb => parseInt(cb.value));
+}
+</script>
+
+{% csrf_token %}
+{% endblock %}

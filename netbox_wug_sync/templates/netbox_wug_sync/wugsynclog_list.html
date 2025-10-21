@@ -1,0 +1,220 @@
+{% extends 'base/layout.html' %}
+{% load i18n %}
+{% load static %}
+
+{% block title %}Sync Logs{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">
+            <i class="mdi mdi-clipboard-text me-2 text-success"></i>
+            WhatsUp Gold Sync Logs
+        </h1>
+    </div>
+</div>
+
+<!-- Filters and Search -->
+<div class="row mb-4">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-body">
+                <form method="get" class="row g-3">
+                    <div class="col-md-3">
+                        <select name="connection" class="form-select">
+                            <option value="">All Connections</option>
+                            {% for conn in connections %}
+                            <option value="{{ conn.pk }}" {% if request.GET.connection == conn.pk|stringformat:"s" %}selected{% endif %}>
+                                {{ conn.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <select name="sync_type" class="form-select">
+                            <option value="">All Types</option>
+                            <option value="manual" {% if request.GET.sync_type == "manual" %}selected{% endif %}>Manual</option>
+                            <option value="scheduled" {% if request.GET.sync_type == "scheduled" %}selected{% endif %}>Scheduled</option>
+                            <option value="export" {% if request.GET.sync_type == "export" %}selected{% endif %}>Export</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <select name="status" class="form-select">
+                            <option value="">All Status</option>
+                            <option value="running" {% if request.GET.status == "running" %}selected{% endif %}>Running</option>
+                            <option value="completed" {% if request.GET.status == "completed" %}selected{% endif %}>Completed</option>
+                            <option value="failed" {% if request.GET.status == "failed" %}selected{% endif %}>Failed</option>
+                            <option value="cancelled" {% if request.GET.status == "cancelled" %}selected{% endif %}>Cancelled</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="mdi mdi-magnify"></i> Filter
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card bg-light">
+            <div class="card-body">
+                <h6 class="card-title">Sync Statistics</h6>
+                <div class="row text-center">
+                    <div class="col-4">
+                        <div class="h5 text-success">{{ completed_syncs }}</div>
+                        <small class="text-muted">Completed</small>
+                    </div>
+                    <div class="col-4">
+                        <div class="h5 text-danger">{{ failed_syncs }}</div>
+                        <small class="text-muted">Failed</small>
+                    </div>
+                    <div class="col-4">
+                        <div class="h5 text-primary">{{ running_syncs }}</div>
+                        <small class="text-muted">Running</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card border-warning">
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <h6 class="card-title mb-1">
+                            <i class="mdi mdi-lightning-bolt text-warning"></i>
+                            Quick Actions
+                        </h6>
+                        <small class="text-muted">Manage synchronization tasks</small>
+                    </div>
+                    <div class="col-md-4 text-end">
+                        <button class="btn btn-outline-primary btn-sm me-2" onclick="refreshLogs()">
+                            <i class="mdi mdi-refresh"></i> Refresh
+                        </button>
+                        <button class="btn btn-outline-danger btn-sm" onclick="clearOldLogs()">
+                            <i class="mdi mdi-delete"></i> Clear Old Logs
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Sync Logs Table -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="mdi mdi-history me-2"></i>
+                    Sync History ({{ table.rows|length }})
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if table.rows %}
+                    <div class="table-responsive">
+                        {% load django_tables2 %}
+                        {% render_table table %}
+                    </div>
+                {% else %}
+                    <div class="text-center py-5">
+                        <i class="mdi mdi-clipboard-text-off text-muted" style="font-size: 3rem;"></i>
+                        <h4 class="text-muted mt-3">No Sync Logs Found</h4>
+                        <p class="text-muted">
+                            {% if request.GET.connection or request.GET.sync_type or request.GET.status %}
+                                No sync logs match your current filters. Try adjusting your search criteria.
+                            {% else %}
+                                No synchronization activities have been logged yet. 
+                                Start a sync operation from a WhatsUp Gold connection to see logs here.
+                            {% endif %}
+                        </p>
+                        <a href="{% url 'plugins:netbox_wug_sync:wugconnection_list' %}" class="btn btn-primary">
+                            <i class="mdi mdi-sync"></i> Start a Sync
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Status Legend -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card bg-light">
+            <div class="card-body">
+                <h6 class="card-title">Status Legend</h6>
+                <div class="row">
+                    <div class="col-md-3">
+                        <span class="badge bg-primary me-2">Running</span>
+                        <small>Sync operation in progress</small>
+                    </div>
+                    <div class="col-md-3">
+                        <span class="badge bg-success me-2">Completed</span>
+                        <small>Sync finished successfully</small>
+                    </div>
+                    <div class="col-md-3">
+                        <span class="badge bg-danger me-2">Failed</span>
+                        <small>Sync encountered errors</small>
+                    </div>
+                    <div class="col-md-3">
+                        <span class="badge bg-secondary me-2">Cancelled</span>
+                        <small>Sync was stopped by user</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- JavaScript for actions -->
+<script>
+function refreshLogs() {
+    location.reload();
+}
+
+function clearOldLogs() {
+    if (confirm('Are you sure you want to clear logs older than 30 days? This action cannot be undone.')) {
+        fetch('{% url "plugins:netbox_wug_sync:wugsynclog_list" %}clear-old/', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert(data.message);
+                location.reload();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        })
+        .catch(error => {
+            alert('Error clearing logs: ' + error.message);
+        });
+    }
+}
+
+// Auto-refresh for running syncs
+document.addEventListener('DOMContentLoaded', function() {
+    // Check if there are any running syncs
+    const runningBadges = document.querySelectorAll('.badge.bg-primary');
+    if (runningBadges.length > 0) {
+        // Refresh the page every 30 seconds if there are running syncs
+        setTimeout(function() {
+            location.reload();
+        }, 30000);
+    }
+});
+</script>
+
+{% csrf_token %}
+{% endblock %}

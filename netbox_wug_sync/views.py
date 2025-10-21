@@ -16,6 +16,7 @@ from django.utils import timezone
 from netbox.views import generic
 from .models import WUGConnection, WUGDevice, WUGSyncLog
 from .forms import WUGConnectionForm
+from .tables import WUGConnectionTable, WUGDeviceTable, WUGSyncLogTable
 from .jobs import WUGSyncJob, WUGConnectionTestJob
 from .wug_client import WUGAPIClient
 
@@ -25,7 +26,7 @@ class WUGConnectionListView(generic.ObjectListView):
     
     model = WUGConnection
     queryset = WUGConnection.objects.all()
-    table_class = None  # Would define a custom table class
+    table = WUGConnectionTable
     template_name = 'netbox_wug_sync/wugconnection_list.html'
     
     def get_context_data(self, **kwargs):
@@ -90,7 +91,7 @@ class WUGDeviceListView(generic.ObjectListView):
     
     model = WUGDevice
     queryset = WUGDevice.objects.all()
-    table_class = None  # Would define a custom table class
+    table = WUGDeviceTable
     template_name = 'netbox_wug_sync/wugdevice_list.html'
     filterset_class = None  # Would define custom filters
     
@@ -113,7 +114,7 @@ class WUGSyncLogListView(generic.ObjectListView):
     
     model = WUGSyncLog
     queryset = WUGSyncLog.objects.all()
-    table_class = None  # Would define a custom table class
+    table = WUGSyncLogTable
     template_name = 'netbox_wug_sync/wugsynclog_list.html'
     
     def get_context_data(self, **kwargs):
