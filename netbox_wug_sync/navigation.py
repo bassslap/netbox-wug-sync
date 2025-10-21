@@ -9,7 +9,8 @@ from netbox.plugins import PluginMenuButton, PluginMenuItem
 # Define menu buttons
 add_connection_button = PluginMenuButton(
     link='plugins:netbox_wug_sync:wugconnection_add',
-    title='Add Connection'
+    title='Add Connection',
+    icon_class='mdi mdi-plus-thick'
 )
 
 # Define menu items
