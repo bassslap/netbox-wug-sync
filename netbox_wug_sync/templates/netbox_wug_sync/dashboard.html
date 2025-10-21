@@ -1,6 +1,7 @@
 {% extends 'base.html' %}
 {% load i18n %}
 {% load static %}
+{% load wug_filters %}
 
 {% block title %}WhatsUp Gold Sync Dashboard{% endblock %}
 
@@ -189,7 +190,7 @@
                                     <td>{{ log.start_time|timesince }} ago</td>
                                     <td>
                                         {% if log.duration %}
-                                            {{ log.duration|floatformat:1 }}s
+                                            {{ log.duration|format_duration }}
                                         {% else %}
                                             -
                                         {% endif %}
