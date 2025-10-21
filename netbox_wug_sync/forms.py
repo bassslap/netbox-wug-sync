@@ -74,6 +74,10 @@ class WUGConnectionForm(NetBoxModelForm):
     def clean(self):
         cleaned_data = super().clean()
         
+        # If parent clean() failed, cleaned_data might be None
+        if cleaned_data is None:
+            return cleaned_data
+        
         # Validate connection settings if test_connection is checked
         if cleaned_data.get('test_connection'):
             host = cleaned_data.get('host')
@@ -116,13 +120,28 @@ class WUGConnectionForm(NetBoxModelForm):
         """Validate host field"""
         host = self.cleaned_data.get('host')
         if host:
-            # Remove protocol if included
-            if host.startswith(('http://', 'https://')):
-                raise ValidationError("Enter hostname only, do not include protocol")
+            # Accept both URLs and hostnames
+            # If it looks like a hostname, convert to URL format for the URLValidator
+            if not host.startswith(('http://', 'https://')):
+                # Assume HTTPS for hostname-only entries
+                host = f'https://{host}'
             
-            # Basic hostname validation
-            if not host.replace('.', '').replace('-', '').isalnum():
-                raise ValidationError("Enter a valid hostname or IP address")
+            # Basic validation - the URLValidator in the model will do the rest
+            if '://' in host:
+                parts = host.split('://', 1)
+                if len(parts) == 2:
+                    protocol, hostname_part = parts
+                    # Remove port if included in hostname
+                    if ':' in hostname_part:
+                        hostname_part = hostname_part.split(':')[0]
+                    
+                    # Basic hostname validation
+                    if hostname_part and not hostname_part.replace('.', '').replace('-', '').replace('_', '').isalnum():
+                        raise ValidationError("Enter a valid hostname or IP address")
+                        
+                    return host
+            
+            raise ValidationError("Enter a valid URL or hostname")
         
         return host
     
