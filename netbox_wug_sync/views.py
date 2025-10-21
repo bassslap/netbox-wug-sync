@@ -64,7 +64,7 @@ class WUGConnectionCreateView(generic.ObjectEditView):
     
     model = WUGConnection
     queryset = WUGConnection.objects.all()
-    form_class = WUGConnectionForm
+    form = WUGConnectionForm
     template_name = 'netbox_wug_sync/wugconnection_edit.html'
 
 
@@ -73,7 +73,7 @@ class WUGConnectionEditView(generic.ObjectEditView):
     
     model = WUGConnection
     queryset = WUGConnection.objects.all()
-    form_class = WUGConnectionForm
+    form = WUGConnectionForm
     template_name = 'netbox_wug_sync/wugconnection_edit.html'
 
 
