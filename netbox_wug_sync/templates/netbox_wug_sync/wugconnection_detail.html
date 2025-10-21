@@ -1,0 +1,340 @@
+{% extends 'base/layout.html' %}
+{% load i18n %}
+{% load static %}
+
+{% block title %}{{ object.name }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">
+            <i class="mdi mdi-server-network me-2 text-primary"></i>
+            {{ object.name }}
+            {% if not object.is_active %}
+                <span class="badge bg-secondary ms-2">Inactive</span>
+            {% endif %}
+        </h1>
+    </div>
+</div>
+
+<!-- Connection Overview -->
+<div class="row mb-4">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="mdi mdi-information me-2"></i>
+                    Connection Details
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <table class="table table-borderless">
+                            <tr>
+                                <th>Host:</th>
+                                <td>{{ object.host }}:{{ object.port }}</td>
+                            </tr>
+                            <tr>
+                                <th>Username:</th>
+                                <td>{{ object.username }}</td>
+                            </tr>
+                            <tr>
+                                <th>SSL:</th>
+                                <td>
+                                    {% if object.use_ssl %}
+                                        <span class="badge bg-success">
+                                            <i class="mdi mdi-lock"></i> Enabled
+                                        </span>
+                                        {% if object.verify_ssl %}
+                                            <span class="badge bg-info ms-1">Verified</span>
+                                        {% else %}
+                                            <span class="badge bg-warning ms-1">Not Verified</span>
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="badge bg-danger">
+                                            <i class="mdi mdi-lock-open"></i> Disabled
+                                        </span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>Status:</th>
+                                <td>
+                                    {% if object.is_active %}
+                                        <span class="badge bg-success">
+                                            <i class="mdi mdi-check-circle"></i> Active
+                                        </span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">
+                                            <i class="mdi mdi-pause-circle"></i> Inactive
+                                        </span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <table class="table table-borderless">
+                            <tr>
+                                <th>Sync Interval:</th>
+                                <td>{{ object.sync_interval_minutes }} minutes</td>
+                            </tr>
+                            <tr>
+                                <th>Last Sync:</th>
+                                <td>
+                                    {% if object.last_sync %}
+                                        {{ object.last_sync|timesince }} ago
+                                    {% else %}
+                                        <span class="text-muted">Never</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>Default Role:</th>
+                                <td>
+                                    {% if object.default_device_role %}
+                                        {{ object.default_device_role.name }}
+                                    {% else %}
+                                        <span class="text-muted">Auto-detect</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>Created:</th>
+                                <td>{{ object.created|date:"M d, Y H:i" }}</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Quick Actions -->
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="mdi mdi-cog me-2"></i>
+                    Actions
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <button class="btn btn-outline-primary" onclick="testConnection({{ object.pk }})">
+                        <i class="mdi mdi-connection"></i> Test Connection
+                    </button>
+                    <button class="btn btn-outline-success" onclick="triggerSync({{ object.pk }})">
+                        <i class="mdi mdi-sync"></i> Trigger Sync
+                    </button>
+                    <a href="{% url 'plugins:netbox_wug_sync:wugconnection_edit' pk=object.pk %}" class="btn btn-outline-secondary">
+                        <i class="mdi mdi-pencil"></i> Edit Connection
+                    </a>
+                    <a href="{% url 'plugins:netbox_wug_sync:wugdevice_list' %}?connection={{ object.pk }}" class="btn btn-outline-info">
+                        <i class="mdi mdi-devices"></i> View Devices
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Settings Overview -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="mdi mdi-settings me-2"></i>
+                    Sync Settings
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="form-check">
+                            {% if object.auto_create_sites %}
+                                <i class="mdi mdi-check-circle text-success me-2"></i>
+                            {% else %}
+                                <i class="mdi mdi-close-circle text-secondary me-2"></i>
+                            {% endif %}
+                            Auto-create Sites
+                        </div>
+                        <small class="text-muted">Create NetBox sites from WUG groups</small>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-check">
+                            {% if object.auto_create_device_types %}
+                                <i class="mdi mdi-check-circle text-success me-2"></i>
+                            {% else %}
+                                <i class="mdi mdi-close-circle text-secondary me-2"></i>
+                            {% endif %}
+                            Auto-create Device Types
+                        </div>
+                        <small class="text-muted">Create device types for unknown devices</small>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-check">
+                            {% if object.enable_netbox_export %}
+                                <i class="mdi mdi-check-circle text-success me-2"></i>
+                            {% else %}
+                                <i class="mdi mdi-close-circle text-secondary me-2"></i>
+                            {% endif %}
+                            NetBox Export
+                        </div>
+                        <small class="text-muted">Export NetBox IPs to WhatsUp Gold</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Sync Logs -->
+{% if recent_logs %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">
+                    <i class="mdi mdi-clipboard-text me-2"></i>
+                    Recent Sync Activity
+                </h5>
+                <a href="{% url 'plugins:netbox_wug_sync:wugsynclog_list' %}?connection={{ object.pk }}" class="btn btn-outline-primary btn-sm">
+                    View All Logs
+                </a>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Type</th>
+                                <th>Status</th>
+                                <th>Started</th>
+                                <th>Duration</th>
+                                <th>Results</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for log in recent_logs %}
+                            <tr>
+                                <td>
+                                    <span class="badge bg-info">{{ log.sync_type|capfirst }}</span>
+                                </td>
+                                <td>
+                                    {% if log.status == 'completed' %}
+                                        <span class="badge bg-success">
+                                            <i class="mdi mdi-check-circle"></i> {{ log.status|capfirst }}
+                                        </span>
+                                    {% elif log.status == 'running' %}
+                                        <span class="badge bg-primary">
+                                            <i class="mdi mdi-play-circle"></i> {{ log.status|capfirst }}
+                                        </span>
+                                    {% elif log.status == 'failed' %}
+                                        <span class="badge bg-danger">
+                                            <i class="mdi mdi-alert-circle"></i> {{ log.status|capfirst }}
+                                        </span>
+                                    {% else %}
+                                        <span class="badge bg-warning">{{ log.status|capfirst }}</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ log.start_time|timesince }} ago</td>
+                                <td>
+                                    {% if log.duration %}
+                                        {{ log.duration|format_duration }}
+                                    {% else %}
+                                        -
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <small>
+                                        {{ log.devices_discovered }} discovered,
+                                        {{ log.devices_created }} created,
+                                        {{ log.devices_updated }} updated
+                                    </small>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- JavaScript for AJAX actions -->
+<script>
+function testConnection(connectionId) {
+    const button = event.target;
+    const originalHtml = button.innerHTML;
+    
+    button.disabled = true;
+    button.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Testing...';
+    
+    fetch(`/plugins/wug-sync/connections/${connectionId}/test/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        button.innerHTML = originalHtml;
+        button.disabled = false;
+        
+        if (data.success) {
+            alert(`Connection test successful! Found ${data.device_count || 'unknown'} devices.`);
+        } else {
+            alert(`Connection test failed: ${data.message}`);
+        }
+    })
+    .catch(error => {
+        button.innerHTML = originalHtml;
+        button.disabled = false;
+        alert('Error testing connection: ' + error.message);
+    });
+}
+
+function triggerSync(connectionId) {
+    if (confirm('Are you sure you want to trigger a sync for this connection?')) {
+        const button = event.target;
+        const originalHtml = button.innerHTML;
+        
+        button.disabled = true;
+        button.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Starting...';
+        
+        fetch(`/plugins/wug-sync/connections/${connectionId}/sync/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            button.innerHTML = originalHtml;
+            button.disabled = false;
+            
+            if (data.success) {
+                alert(data.message);
+                location.reload();
+            } else {
+                alert(`Sync failed: ${data.message}`);
+            }
+        })
+        .catch(error => {
+            button.innerHTML = originalHtml;
+            button.disabled = false;
+            alert('Error triggering sync: ' + error.message);
+        });
+    }
+}
+</script>
+
+{% csrf_token %}
+{% endblock %}

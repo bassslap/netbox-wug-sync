@@ -24,6 +24,7 @@ class WUGConnectionListView(generic.ObjectListView):
     """List view for WUG Connections"""
     
     model = WUGConnection
+    queryset = WUGConnection.objects.all()
     table_class = None  # Would define a custom table class
     template_name = 'netbox_wug_sync/wugconnection_list.html'
     
@@ -37,6 +38,7 @@ class WUGConnectionDetailView(generic.ObjectView):
     """Detail view for WUG Connection"""
     
     model = WUGConnection
+    queryset = WUGConnection.objects.all()
     template_name = 'netbox_wug_sync/wugconnection_detail.html'
     
     def get_context_data(self, **kwargs):
@@ -61,6 +63,7 @@ class WUGConnectionCreateView(generic.ObjectEditView):
     """Create view for WUG Connection"""
     
     model = WUGConnection
+    queryset = WUGConnection.objects.all()
     form_class = WUGConnectionForm
     template_name = 'netbox_wug_sync/wugconnection_edit.html'
 
@@ -69,6 +72,7 @@ class WUGConnectionEditView(generic.ObjectEditView):
     """Edit view for WUG Connection"""
     
     model = WUGConnection
+    queryset = WUGConnection.objects.all()
     form_class = WUGConnectionForm
     template_name = 'netbox_wug_sync/wugconnection_edit.html'
 
@@ -77,6 +81,7 @@ class WUGConnectionDeleteView(generic.ObjectDeleteView):
     """Delete view for WUG Connection"""
     
     model = WUGConnection
+    queryset = WUGConnection.objects.all()
     template_name = 'netbox_wug_sync/wugconnection_delete.html'
 
 
@@ -84,6 +89,7 @@ class WUGDeviceListView(generic.ObjectListView):
     """List view for WUG Devices"""
     
     model = WUGDevice
+    queryset = WUGDevice.objects.all()
     table_class = None  # Would define a custom table class
     template_name = 'netbox_wug_sync/wugdevice_list.html'
     filterset_class = None  # Would define custom filters
@@ -98,6 +104,7 @@ class WUGDeviceDetailView(generic.ObjectView):
     """Detail view for WUG Device"""
     
     model = WUGDevice
+    queryset = WUGDevice.objects.all()
     template_name = 'netbox_wug_sync/wugdevice_detail.html'
 
 
@@ -105,6 +112,7 @@ class WUGSyncLogListView(generic.ObjectListView):
     """List view for WUG Sync Logs"""
     
     model = WUGSyncLog
+    queryset = WUGSyncLog.objects.all()
     table_class = None  # Would define a custom table class
     template_name = 'netbox_wug_sync/wugsynclog_list.html'
     
@@ -118,6 +126,7 @@ class WUGSyncLogDetailView(generic.ObjectView):
     """Detail view for WUG Sync Log"""
     
     model = WUGSyncLog
+    queryset = WUGSyncLog.objects.all()
     template_name = 'netbox_wug_sync/wugsynclog_detail.html'
 
 

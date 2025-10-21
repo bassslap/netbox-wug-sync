@@ -1,0 +1,276 @@
+{% extends 'base/layout.html' %}
+{% load i18n %}
+{% load static %}
+
+{% block title %}
+    {% if object %}
+        Edit {{ object.name }}
+    {% else %}
+        Add WhatsUp Gold Connection
+    {% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">
+            {% if object %}
+                <i class="mdi mdi-pencil me-2 text-primary"></i>
+                Edit Connection: {{ object.name }}
+            {% else %}
+                <i class="mdi mdi-plus me-2 text-primary"></i>
+                Add WhatsUp Gold Connection
+            {% endif %}
+        </h1>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="mdi mdi-server-network me-2"></i>
+                    Connection Settings
+                </h5>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    
+                    <!-- Basic Connection Info -->
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="{{ form.name.id_for_label }}" class="form-label">
+                                {{ form.name.label }}
+                                {% if form.name.field.required %}<span class="text-danger">*</span>{% endif %}
+                            </label>
+                            {{ form.name }}
+                            {% if form.name.help_text %}
+                                <div class="form-text">{{ form.name.help_text }}</div>
+                            {% endif %}
+                            {% if form.name.errors %}
+                                <div class="text-danger">{{ form.name.errors }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">
+                                {{ form.is_active.label }}
+                            </label>
+                            <div class="form-check">
+                                {{ form.is_active }}
+                                <label class="form-check-label" for="{{ form.is_active.id_for_label }}">
+                                    Enable synchronization for this connection
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Host and Port -->
+                    <div class="row mb-3">
+                        <div class="col-md-8">
+                            <label for="{{ form.host.id_for_label }}" class="form-label">
+                                {{ form.host.label }}
+                                {% if form.host.field.required %}<span class="text-danger">*</span>{% endif %}
+                            </label>
+                            {{ form.host }}
+                            {% if form.host.help_text %}
+                                <div class="form-text">{{ form.host.help_text }}</div>
+                            {% endif %}
+                            {% if form.host.errors %}
+                                <div class="text-danger">{{ form.host.errors }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-4">
+                            <label for="{{ form.port.id_for_label }}" class="form-label">
+                                {{ form.port.label }}
+                                {% if form.port.field.required %}<span class="text-danger">*</span>{% endif %}
+                            </label>
+                            {{ form.port }}
+                            {% if form.port.help_text %}
+                                <div class="form-text">{{ form.port.help_text }}</div>
+                            {% endif %}
+                            {% if form.port.errors %}
+                                <div class="text-danger">{{ form.port.errors }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- Authentication -->
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="{{ form.username.id_for_label }}" class="form-label">
+                                {{ form.username.label }}
+                                {% if form.username.field.required %}<span class="text-danger">*</span>{% endif %}
+                            </label>
+                            {{ form.username }}
+                            {% if form.username.help_text %}
+                                <div class="form-text">{{ form.username.help_text }}</div>
+                            {% endif %}
+                            {% if form.username.errors %}
+                                <div class="text-danger">{{ form.username.errors }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label for="{{ form.password.id_for_label }}" class="form-label">
+                                {{ form.password.label }}
+                                {% if form.password.field.required %}<span class="text-danger">*</span>{% endif %}
+                            </label>
+                            {{ form.password }}
+                            {% if form.password.help_text %}
+                                <div class="form-text">{{ form.password.help_text }}</div>
+                            {% endif %}
+                            {% if form.password.errors %}
+                                <div class="text-danger">{{ form.password.errors }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- SSL Settings -->
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <div class="form-check">
+                                {{ form.use_ssl }}
+                                <label class="form-check-label" for="{{ form.use_ssl.id_for_label }}">
+                                    {{ form.use_ssl.label }}
+                                </label>
+                            </div>
+                            {% if form.use_ssl.help_text %}
+                                <div class="form-text">{{ form.use_ssl.help_text }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check">
+                                {{ form.verify_ssl }}
+                                <label class="form-check-label" for="{{ form.verify_ssl.id_for_label }}">
+                                    {{ form.verify_ssl.label }}
+                                </label>
+                            </div>
+                            {% if form.verify_ssl.help_text %}
+                                <div class="form-text">{{ form.verify_ssl.help_text }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- Sync Settings -->
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="{{ form.sync_interval_minutes.id_for_label }}" class="form-label">
+                                {{ form.sync_interval_minutes.label }}
+                            </label>
+                            {{ form.sync_interval_minutes }}
+                            {% if form.sync_interval_minutes.help_text %}
+                                <div class="form-text">{{ form.sync_interval_minutes.help_text }}</div>
+                            {% endif %}
+                            {% if form.sync_interval_minutes.errors %}
+                                <div class="text-danger">{{ form.sync_interval_minutes.errors }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label for="{{ form.default_device_role.id_for_label }}" class="form-label">
+                                {{ form.default_device_role.label }}
+                            </label>
+                            {{ form.default_device_role }}
+                            {% if form.default_device_role.help_text %}
+                                <div class="form-text">{{ form.default_device_role.help_text }}</div>
+                            {% endif %}
+                            {% if form.default_device_role.errors %}
+                                <div class="text-danger">{{ form.default_device_role.errors }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- Auto-Creation Settings -->
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <div class="form-check">
+                                {{ form.auto_create_sites }}
+                                <label class="form-check-label" for="{{ form.auto_create_sites.id_for_label }}">
+                                    {{ form.auto_create_sites.label }}
+                                </label>
+                            </div>
+                            {% if form.auto_create_sites.help_text %}
+                                <div class="form-text">{{ form.auto_create_sites.help_text }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check">
+                                {{ form.auto_create_device_types }}
+                                <label class="form-check-label" for="{{ form.auto_create_device_types.id_for_label }}">
+                                    {{ form.auto_create_device_types.label }}
+                                </label>
+                            </div>
+                            {% if form.auto_create_device_types.help_text %}
+                                <div class="form-text">{{ form.auto_create_device_types.help_text }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- Test Connection -->
+                    <div class="row mb-4">
+                        <div class="col-12">
+                            <div class="form-check">
+                                {{ form.test_connection }}
+                                <label class="form-check-label" for="{{ form.test_connection.id_for_label }}">
+                                    <strong>{{ form.test_connection.label }}</strong>
+                                </label>
+                            </div>
+                            {% if form.test_connection.help_text %}
+                                <div class="form-text">{{ form.test_connection.help_text }}</div>
+                            {% endif %}
+                            {% if form.test_connection.errors %}
+                                <div class="text-danger">{{ form.test_connection.errors }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- Form Actions -->
+                    <div class="row">
+                        <div class="col-12">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="mdi mdi-content-save"></i>
+                                {% if object %}Update Connection{% else %}Create Connection{% endif %}
+                            </button>
+                            <a href="{% url 'plugins:netbox_wug_sync:wugconnection_list' %}" class="btn btn-secondary ms-2">
+                                <i class="mdi mdi-arrow-left"></i> Cancel
+                            </a>
+                            {% if object %}
+                                <a href="{% url 'plugins:netbox_wug_sync:wugconnection' pk=object.pk %}" class="btn btn-outline-info ms-2">
+                                    <i class="mdi mdi-eye"></i> View Details
+                                </a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Custom CSS for form styling -->
+<style>
+.form-control, .form-select {
+    border-radius: 6px;
+}
+
+.form-check {
+    margin-top: 8px;
+}
+
+.card {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.btn {
+    border-radius: 6px;
+}
+
+.text-danger {
+    font-size: 0.875rem;
+}
+
+.form-text {
+    font-size: 0.875rem;
+}
+</style>
+{% endblock %}
