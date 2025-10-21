@@ -2,7 +2,7 @@ from netbox.plugins import PluginConfig
 
 
 class WUGSyncConfig(PluginConfig):
-    name = 'netbox-wug-sync'
+    name = 'netbox_wug_sync'
     verbose_name = 'NetBox WhatsUp Gold Sync'
     description = 'Synchronize devices between NetBox and WhatsUp Gold'
     version = '0.1.0'
