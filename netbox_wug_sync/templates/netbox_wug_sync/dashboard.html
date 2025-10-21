@@ -5,67 +5,125 @@
 
 {% block title %}WhatsUp Gold Sync Dashboard{% endblock %}
 
+{% block extra_css %}
+<style>
+    .metric-card {
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .metric-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    .metric-icon {
+        font-size: 2.5rem;
+        opacity: 0.8;
+    }
+    .metric-value {
+        font-size: 2rem;
+        font-weight: bold;
+    }
+    .status-indicator {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin-right: 8px;
+    }
+    .status-active { background-color: #28a745; }
+    .status-inactive { background-color: #dc3545; }
+    .status-warning { background-color: #ffc107; }
+    .refresh-btn {
+        position: absolute;
+        top: 15px;
+        right: 15px;
+    }
+    .action-buttons .btn {
+        margin-right: 5px;
+        margin-bottom: 5px;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
+<!-- Header with refresh button -->
 <div class="row">
-    <div class="col-12">
-        <h1>{% trans "WhatsUp Gold Sync Dashboard" %}</h1>
+    <div class="col-12 position-relative">
+        <h1 class="mb-4">
+            <i class="mdi mdi-view-dashboard me-2 text-primary"></i>
+            {% trans "WhatsUp Gold Sync Dashboard" %}
+        </h1>
+        <button class="btn btn-outline-primary refresh-btn" onclick="location.reload()">
+            <i class="mdi mdi-refresh"></i> Refresh
+        </button>
     </div>
 </div>
 
 <!-- Statistics Cards -->
 <div class="row mb-4">
-    <div class="col-md-3">
-        <div class="card border-primary">
-            <div class="card-body">
-                <div class="d-flex align-items-center">
-                    <i class="mdi mdi-server-network text-primary me-3" style="font-size: 2rem;"></i>
-                    <div>
-                        <h5 class="card-title mb-0">{{ connections|length }}</h5>
-                        <p class="card-text text-muted">Active Connections</p>
-                    </div>
-                </div>
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="card border-primary metric-card h-100">
+            <div class="card-body text-center">
+                <i class="mdi mdi-server-network text-primary metric-icon"></i>
+                <div class="metric-value text-primary">{{ connections|length }}</div>
+                <p class="card-text text-muted mb-0">Active Connections</p>
+                <small class="text-muted">
+                    {% if connections %}
+                        <span class="status-indicator status-active"></span>Online
+                    {% else %}
+                        <span class="status-indicator status-inactive"></span>None configured
+                    {% endif %}
+                </small>
             </div>
         </div>
     </div>
     
-    <div class="col-md-3">
-        <div class="card border-success">
-            <div class="card-body">
-                <div class="d-flex align-items-center">
-                    <i class="mdi mdi-devices text-success me-3" style="font-size: 2rem;"></i>
-                    <div>
-                        <h5 class="card-title mb-0">{{ synced_devices }}</h5>
-                        <p class="card-text text-muted">Synced Devices</p>
-                    </div>
-                </div>
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="card border-success metric-card h-100">
+            <div class="card-body text-center">
+                <i class="mdi mdi-devices text-success metric-icon"></i>
+                <div class="metric-value text-success">{{ synced_devices }}</div>
+                <p class="card-text text-muted mb-0">Synced Devices</p>
+                <small class="text-muted">
+                    {% if synced_devices > 0 %}
+                        <span class="status-indicator status-active"></span>Synchronized
+                    {% else %}
+                        <span class="status-indicator status-warning"></span>No devices synced
+                    {% endif %}
+                </small>
             </div>
         </div>
     </div>
     
-    <div class="col-md-3">
-        <div class="card border-warning">
-            <div class="card-body">
-                <div class="d-flex align-items-center">
-                    <i class="mdi mdi-clock text-warning me-3" style="font-size: 2rem;"></i>
-                    <div>
-                        <h5 class="card-title mb-0">{{ pending_devices }}</h5>
-                        <p class="card-text text-muted">Pending Sync</p>
-                    </div>
-                </div>
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="card border-warning metric-card h-100">
+            <div class="card-body text-center">
+                <i class="mdi mdi-clock text-warning metric-icon"></i>
+                <div class="metric-value text-warning">{{ pending_devices }}</div>
+                <p class="card-text text-muted mb-0">Pending Sync</p>
+                <small class="text-muted">
+                    {% if pending_devices > 0 %}
+                        <span class="status-indicator status-warning"></span>Awaiting sync
+                    {% else %}
+                        <span class="status-indicator status-active"></span>Up to date
+                    {% endif %}
+                </small>
             </div>
         </div>
     </div>
     
-    <div class="col-md-3">
-        <div class="card border-danger">
-            <div class="card-body">
-                <div class="d-flex align-items-center">
-                    <i class="mdi mdi-alert-circle text-danger me-3" style="font-size: 2rem;"></i>
-                    <div>
-                        <h5 class="card-title mb-0">{{ error_devices }}</h5>
-                        <p class="card-text text-muted">Sync Errors</p>
-                    </div>
-                </div>
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="card border-danger metric-card h-100">
+            <div class="card-body text-center">
+                <i class="mdi mdi-alert-circle text-danger metric-icon"></i>
+                <div class="metric-value text-danger">{{ error_devices }}</div>
+                <p class="card-text text-muted mb-0">Sync Errors</p>
+                <small class="text-muted">
+                    {% if error_devices > 0 %}
+                        <span class="status-indicator status-inactive"></span>Needs attention
+                    {% else %}
+                        <span class="status-indicator status-active"></span>No errors
+                    {% endif %}
+                </small>
             </div>
         </div>
     </div>
@@ -75,51 +133,91 @@
 <div class="row mb-4">
     <div class="col-12">
         <div class="card">
-            <div class="card-header">
+            <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="card-title mb-0">
                     <i class="mdi mdi-server-network me-2"></i>
                     Active Connections
                 </h5>
+                <a href="{% url 'plugins:netbox_wug_sync:wugconnection_add' %}" class="btn btn-primary btn-sm">
+                    <i class="mdi mdi-plus"></i> Add Connection
+                </a>
             </div>
             <div class="card-body">
                 {% if connections %}
                     <div class="table-responsive">
-                        <table class="table table-striped">
-                            <thead>
+                        <table class="table table-hover">
+                            <thead class="table-light">
                                 <tr>
-                                    <th>Name</th>
-                                    <th>Host</th>
+                                    <th>Connection</th>
+                                    <th>Status</th>
                                     <th>Last Sync</th>
-                                    <th>Device Count</th>
-                                    <th>Actions</th>
+                                    <th>Devices</th>
+                                    <th class="text-center">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for connection in connections %}
                                 <tr>
                                     <td>
-                                        <a href="{% url 'plugins:netbox_wug_sync:wugconnection' pk=connection.pk %}">
-                                            {{ connection.name }}
-                                        </a>
+                                        <div>
+                                            <strong>
+                                                <a href="{% url 'plugins:netbox_wug_sync:wugconnection' pk=connection.pk %}" 
+                                                   class="text-decoration-none">
+                                                    {{ connection.name }}
+                                                </a>
+                                            </strong>
+                                            <br>
+                                            <small class="text-muted">
+                                                <i class="mdi mdi-web"></i> {{ connection.host }}:{{ connection.port }}
+                                            </small>
+                                        </div>
                                     </td>
-                                    <td>{{ connection.host }}:{{ connection.port }}</td>
                                     <td>
-                                        {% if connection.last_sync %}
-                                            {{ connection.last_sync|timesince }} ago
+                                        {% if connection.is_active %}
+                                            <span class="badge bg-success">
+                                                <i class="mdi mdi-check-circle"></i> Active
+                                            </span>
                                         {% else %}
-                                            Never
+                                            <span class="badge bg-secondary">
+                                                <i class="mdi mdi-pause-circle"></i> Inactive
+                                            </span>
                                         {% endif %}
                                     </td>
-                                    <td>{{ connection.devices.count }}</td>
                                     <td>
-                                        <button class="btn btn-sm btn-outline-primary" 
-                                                onclick="testConnection({{ connection.pk }})">
-                                            <i class="mdi mdi-connection"></i> Test
-                                        </button>
-                                        <button class="btn btn-sm btn-outline-success" 
-                                                onclick="triggerSync({{ connection.pk }})">
-                                            <i class="mdi mdi-sync"></i> Sync
-                                        </button>
+                                        {% if connection.last_sync %}
+                                            <span title="{{ connection.last_sync }}">
+                                                <i class="mdi mdi-clock-outline"></i>
+                                                {{ connection.last_sync|timesince }} ago
+                                            </span>
+                                        {% else %}
+                                            <span class="text-muted">
+                                                <i class="mdi mdi-clock-alert-outline"></i> Never synced
+                                            </span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-info">
+                                            {{ connection.devices.count }} devices
+                                        </span>
+                                    </td>
+                                    <td class="text-center">
+                                        <div class="action-buttons">
+                                            <button class="btn btn-sm btn-outline-primary" 
+                                                    onclick="testConnection({{ connection.pk }})"
+                                                    title="Test Connection">
+                                                <i class="mdi mdi-connection"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-success" 
+                                                    onclick="triggerSync({{ connection.pk }})"
+                                                    title="Trigger Sync">
+                                                <i class="mdi mdi-sync"></i>
+                                            </button>
+                                            <a href="{% url 'plugins:netbox_wug_sync:wugconnection_edit' pk=connection.pk %}" 
+                                               class="btn btn-sm btn-outline-secondary"
+                                               title="Edit Connection">
+                                                <i class="mdi mdi-pencil"></i>
+                                            </a>
+                                        </div>
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -127,11 +225,12 @@
                         </table>
                     </div>
                 {% else %}
-                    <div class="text-center py-4">
-                        <i class="mdi mdi-server-off text-muted" style="font-size: 3rem;"></i>
-                        <p class="text-muted mt-2">No active connections found</p>
+                    <div class="text-center py-5">
+                        <i class="mdi mdi-server-off text-muted" style="font-size: 4rem;"></i>
+                        <h5 class="text-muted mt-3">No WhatsUp Gold Connections</h5>
+                        <p class="text-muted">Get started by adding your first WhatsUp Gold server connection.</p>
                         <a href="{% url 'plugins:netbox_wug_sync:wugconnection_add' %}" class="btn btn-primary">
-                            <i class="mdi mdi-plus"></i> Add Connection
+                            <i class="mdi mdi-plus"></i> Add First Connection
                         </a>
                     </div>
                 {% endif %}
@@ -144,24 +243,27 @@
 <div class="row">
     <div class="col-12">
         <div class="card">
-            <div class="card-header">
+            <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="card-title mb-0">
                     <i class="mdi mdi-clipboard-text me-2"></i>
                     Recent Sync Activity
                 </h5>
+                <a href="{% url 'plugins:netbox_wug_sync:wugsynclog_list' %}" class="btn btn-outline-primary btn-sm">
+                    <i class="mdi mdi-format-list-bulleted"></i> View All Logs
+                </a>
             </div>
             <div class="card-body">
                 {% if recent_logs %}
                     <div class="table-responsive">
-                        <table class="table table-striped">
-                            <thead>
+                        <table class="table table-hover">
+                            <thead class="table-light">
                                 <tr>
                                     <th>Connection</th>
                                     <th>Type</th>
                                     <th>Status</th>
-                                    <th>Start Time</th>
+                                    <th>Started</th>
                                     <th>Duration</th>
-                                    <th>Devices</th>
+                                    <th>Results</th>
                                     <th>Success Rate</th>
                                 </tr>
                             </thead>
@@ -169,43 +271,69 @@
                                 {% for log in recent_logs %}
                                 <tr>
                                     <td>
-                                        <a href="{% url 'plugins:netbox_wug_sync:wugsynclog' pk=log.pk %}">
-                                            {{ log.connection.name }}
+                                        <a href="{% url 'plugins:netbox_wug_sync:wugsynclog' pk=log.pk %}" 
+                                           class="text-decoration-none">
+                                            <strong>{{ log.connection.name }}</strong>
                                         </a>
                                     </td>
                                     <td>
-                                        <span class="badge bg-secondary">{{ log.sync_type }}</span>
+                                        <span class="badge bg-info">
+                                            <i class="mdi mdi-sync"></i> {{ log.sync_type|capfirst }}
+                                        </span>
                                     </td>
                                     <td>
                                         {% if log.status == 'completed' %}
-                                            <span class="badge bg-success">{{ log.status }}</span>
+                                            <span class="badge bg-success">
+                                                <i class="mdi mdi-check-circle"></i> {{ log.status|capfirst }}
+                                            </span>
                                         {% elif log.status == 'running' %}
-                                            <span class="badge bg-primary">{{ log.status }}</span>
+                                            <span class="badge bg-primary">
+                                                <i class="mdi mdi-play-circle"></i> {{ log.status|capfirst }}
+                                            </span>
                                         {% elif log.status == 'failed' %}
-                                            <span class="badge bg-danger">{{ log.status }}</span>
+                                            <span class="badge bg-danger">
+                                                <i class="mdi mdi-alert-circle"></i> {{ log.status|capfirst }}
+                                            </span>
                                         {% else %}
-                                            <span class="badge bg-warning">{{ log.status }}</span>
+                                            <span class="badge bg-warning">
+                                                <i class="mdi mdi-pause-circle"></i> {{ log.status|capfirst }}
+                                            </span>
                                         {% endif %}
                                     </td>
-                                    <td>{{ log.start_time|timesince }} ago</td>
+                                    <td>
+                                        <span title="{{ log.start_time }}">
+                                            <i class="mdi mdi-clock-outline"></i>
+                                            {{ log.start_time|timesince }} ago
+                                        </span>
+                                    </td>
                                     <td>
                                         {% if log.duration %}
-                                            {{ log.duration|format_duration }}
+                                            <span class="badge bg-secondary">
+                                                {{ log.duration|format_duration }}
+                                            </span>
                                         {% else %}
-                                            -
+                                            <span class="text-muted">-</span>
                                         {% endif %}
                                     </td>
-                                    <td>{{ log.devices_discovered }}</td>
                                     <td>
-                                        <div class="progress" style="height: 20px;">
-                                            <div class="progress-bar 
-                                                {% if log.success_rate >= 90 %}bg-success
-                                                {% elif log.success_rate >= 70 %}bg-warning
-                                                {% else %}bg-danger{% endif %}" 
-                                                role="progressbar" 
-                                                style="width: {{ log.success_rate }}%">
-                                                {{ log.success_rate|floatformat:1 }}%
+                                        <small class="text-muted">
+                                            <div>{{ log.devices_discovered }} discovered</div>
+                                            <div>{{ log.devices_created }} created</div>
+                                            <div>{{ log.devices_updated }} updated</div>
+                                        </small>
+                                    </td>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <div class="progress flex-grow-1 me-2" style="height: 20px;">
+                                                <div class="progress-bar 
+                                                    {% if log.success_rate >= 90 %}bg-success
+                                                    {% elif log.success_rate >= 70 %}bg-warning
+                                                    {% else %}bg-danger{% endif %}" 
+                                                    role="progressbar" 
+                                                    style="width: {{ log.success_rate }}%">
+                                                </div>
                                             </div>
+                                            <small class="text-muted">{{ log.success_rate|floatformat:1 }}%</small>
                                         </div>
                                     </td>
                                 </tr>
@@ -214,9 +342,15 @@
                         </table>
                     </div>
                 {% else %}
-                    <div class="text-center py-4">
-                        <i class="mdi mdi-clipboard-text-off text-muted" style="font-size: 3rem;"></i>
-                        <p class="text-muted mt-2">No sync logs found</p>
+                    <div class="text-center py-5">
+                        <i class="mdi mdi-clipboard-text-off text-muted" style="font-size: 4rem;"></i>
+                        <h5 class="text-muted mt-3">No Sync Activity</h5>
+                        <p class="text-muted">No sync operations have been performed yet. Start by testing a connection or triggering a sync.</p>
+                        {% if connections %}
+                            <button class="btn btn-success" onclick="triggerSync({{ connections.0.pk }})">
+                                <i class="mdi mdi-sync"></i> Start First Sync
+                            </button>
+                        {% endif %}
                     </div>
                 {% endif %}
             </div>
@@ -226,7 +360,24 @@
 
 <!-- JavaScript for AJAX actions -->
 <script>
+// Show loading spinner for buttons
+function showLoading(button, text = 'Loading...') {
+    button.disabled = true;
+    button.innerHTML = `<span class="spinner-border spinner-border-sm me-2" role="status"></span>${text}`;
+}
+
+// Reset button state
+function resetButton(button, icon, text) {
+    button.disabled = false;
+    button.innerHTML = `<i class="${icon}"></i> ${text}`;
+}
+
 function testConnection(connectionId) {
+    const button = event.target;
+    const originalHtml = button.innerHTML;
+    
+    showLoading(button, 'Testing...');
+    
     fetch(`/plugins/wug-sync/connections/${connectionId}/test/`, {
         method: 'POST',
         headers: {
@@ -236,19 +387,73 @@ function testConnection(connectionId) {
     })
     .then(response => response.json())
     .then(data => {
+        button.innerHTML = originalHtml;
+        button.disabled = false;
+        
         if (data.success) {
-            alert(`Connection test successful! Found ${data.device_count || 'unknown'} devices.`);
+            // Show success message
+            const alertDiv = document.createElement('div');
+            alertDiv.className = 'alert alert-success alert-dismissible fade show mt-2';
+            alertDiv.innerHTML = `
+                <i class="mdi mdi-check-circle me-2"></i>
+                Connection test successful! Found ${data.device_count || 'unknown'} devices.
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            button.closest('.card-body').insertBefore(alertDiv, button.closest('.card-body').firstChild);
+            
+            // Auto-hide after 5 seconds
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.remove();
+                }
+            }, 5000);
         } else {
-            alert(`Connection test failed: ${data.message}`);
+            // Show error message
+            const alertDiv = document.createElement('div');
+            alertDiv.className = 'alert alert-danger alert-dismissible fade show mt-2';
+            alertDiv.innerHTML = `
+                <i class="mdi mdi-alert-circle me-2"></i>
+                Connection test failed: ${data.message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            button.closest('.card-body').insertBefore(alertDiv, button.closest('.card-body').firstChild);
+            
+            // Auto-hide after 8 seconds
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.remove();
+                }
+            }, 8000);
         }
     })
     .catch(error => {
-        alert('Error testing connection: ' + error.message);
+        button.innerHTML = originalHtml;
+        button.disabled = false;
+        
+        const alertDiv = document.createElement('div');
+        alertDiv.className = 'alert alert-danger alert-dismissible fade show mt-2';
+        alertDiv.innerHTML = `
+            <i class="mdi mdi-alert-circle me-2"></i>
+            Error testing connection: ${error.message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        button.closest('.card-body').insertBefore(alertDiv, button.closest('.card-body').firstChild);
+        
+        setTimeout(() => {
+            if (alertDiv.parentNode) {
+                alertDiv.remove();
+            }
+        }, 8000);
     });
 }
 
 function triggerSync(connectionId) {
-    if (confirm('Are you sure you want to trigger a sync for this connection?')) {
+    if (confirm('Are you sure you want to trigger a sync for this connection? This may take several minutes.')) {
+        const button = event.target;
+        const originalHtml = button.innerHTML;
+        
+        showLoading(button, 'Starting...');
+        
         fetch(`/plugins/wug-sync/connections/${connectionId}/sync/`, {
             method: 'POST',
             headers: {
@@ -258,18 +463,72 @@ function triggerSync(connectionId) {
         })
         .then(response => response.json())
         .then(data => {
+            button.innerHTML = originalHtml;
+            button.disabled = false;
+            
             if (data.success) {
-                alert(data.message);
-                location.reload(); // Refresh to show updated status
+                const alertDiv = document.createElement('div');
+                alertDiv.className = 'alert alert-info alert-dismissible fade show mt-2';
+                alertDiv.innerHTML = `
+                    <i class="mdi mdi-sync me-2"></i>
+                    ${data.message} The page will refresh to show updated status.
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+                button.closest('.card-body').insertBefore(alertDiv, button.closest('.card-body').firstChild);
+                
+                // Refresh page after 3 seconds
+                setTimeout(() => {
+                    location.reload();
+                }, 3000);
             } else {
-                alert(`Sync failed: ${data.message}`);
+                const alertDiv = document.createElement('div');
+                alertDiv.className = 'alert alert-danger alert-dismissible fade show mt-2';
+                alertDiv.innerHTML = `
+                    <i class="mdi mdi-alert-circle me-2"></i>
+                    Sync failed: ${data.message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+                button.closest('.card-body').insertBefore(alertDiv, button.closest('.card-body').firstChild);
+                
+                setTimeout(() => {
+                    if (alertDiv.parentNode) {
+                        alertDiv.remove();
+                    }
+                }, 8000);
             }
         })
         .catch(error => {
-            alert('Error triggering sync: ' + error.message);
+            button.innerHTML = originalHtml;
+            button.disabled = false;
+            
+            const alertDiv = document.createElement('div');
+            alertDiv.className = 'alert alert-danger alert-dismissible fade show mt-2';
+            alertDiv.innerHTML = `
+                <i class="mdi mdi-alert-circle me-2"></i>
+                Error triggering sync: ${error.message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            button.closest('.card-body').insertBefore(alertDiv, button.closest('.card-body').firstChild);
+            
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.remove();
+                }
+            }, 8000);
         });
     }
 }
+
+// Auto-refresh dashboard every 30 seconds if there are running syncs
+document.addEventListener('DOMContentLoaded', function() {
+    const runningBadges = document.querySelectorAll('.badge:contains("running")');
+    if (runningBadges.length > 0) {
+        console.log('Found running syncs, will auto-refresh in 30 seconds');
+        setTimeout(() => {
+            location.reload();
+        }, 30000);
+    }
+});
 </script>
 
 {% csrf_token %}
