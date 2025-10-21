@@ -243,7 +243,7 @@
                                 <td>{{ log.start_time|timesince }} ago</td>
                                 <td>
                                     {% if log.duration %}
-                                        {{ log.duration|format_duration }}
+                                        {{ log.duration }}
                                     {% else %}
                                         -
                                     {% endif %}
