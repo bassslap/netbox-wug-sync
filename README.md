@@ -66,12 +66,12 @@ Add the plugin to your NetBox configuration in `configuration.py`:
 
 ```python
 PLUGINS = [
-  'netbox-wug-sync',
+  'netbox_wug_sync',
 ]
 
 # Plugin configuration
 PLUGINS_CONFIG = {
-  'netbox-wug-sync': {
+  'netbox_wug_sync': {
         # Required settings (configure via NetBox UI)
         'wug_host': None,           # Set via connection config
         'wug_username': None,       # Set via connection config  
