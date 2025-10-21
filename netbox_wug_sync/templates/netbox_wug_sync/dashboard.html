@@ -189,11 +189,7 @@
                                     <td>{{ log.start_time|timesince }} ago</td>
                                     <td>
                                         {% if log.duration %}
-                                            {% if log.duration < 60 %}
-                                                {{ log.duration|floatformat:1 }}s
-                                            {% else %}
-                                                {{ log.duration|floatformat:1|div:60 }}m
-                                            {% endif %}
+                                            {{ log.duration|floatformat:1 }}s
                                         {% else %}
                                             -
                                         {% endif %}
