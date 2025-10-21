@@ -14,7 +14,7 @@ class WUGConnectionSerializer(NetBoxModelSerializer):
     """Serializer for WUGConnection model"""
     
     url = serializers.HyperlinkedIdentityField(
-    view_name='plugins-api:netbox-wug-sync-api:wugconnection-detail'
+    view_name='plugins-api:netbox_wug_sync-api:wugconnection-detail'
     )
     
     device_count = serializers.SerializerMethodField()
@@ -52,7 +52,7 @@ class WUGDeviceSerializer(NetBoxModelSerializer):
     """Serializer for WUGDevice model"""
     
     url = serializers.HyperlinkedIdentityField(
-    view_name='plugins-api:netbox-wug-sync-api:wugdevice-detail'
+    view_name='plugins-api:netbox_wug_sync-api:wugdevice-detail'
     )
     
     connection = serializers.StringRelatedField()
@@ -74,7 +74,7 @@ class WUGSyncLogSerializer(NetBoxModelSerializer):
     """Serializer for WUGSyncLog model"""
     
     url = serializers.HyperlinkedIdentityField(
-    view_name='plugins-api:netbox-wug-sync-api:wugsynclog-detail'
+    view_name='plugins-api:netbox_wug_sync-api:wugsynclog-detail'
     )
     
     connection = serializers.StringRelatedField()
@@ -105,7 +105,7 @@ class NestedWUGConnectionSerializer(serializers.ModelSerializer):
     """Nested serializer for WUGConnection references"""
     
     url = serializers.HyperlinkedIdentityField(
-    view_name='plugins-api:netbox-wug-sync-api:wugconnection-detail'
+    view_name='plugins-api:netbox_wug_sync-api:wugconnection-detail'
     )
     
     class Meta:
