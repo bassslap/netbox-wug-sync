@@ -233,6 +233,7 @@ def trigger_sync_view(request, pk):
             
             # Test WUG connection
             logger.info(f"Testing WUG connection to {connection.host}:{connection.port}")
+            logger.info(f"Connection details: host='{connection.host}', port={connection.port}, use_ssl={connection.use_ssl}")
             
             with WUGAPIClient(
                 host=connection.host,

@@ -43,7 +43,6 @@ class WUGAPIClient:
             verify_ssl: Verify SSL certificates (default: False)
             timeout: Request timeout in seconds (default: 30)
         """
-        self.host = host
         self.username = username
         self.password = password
         self.port = port
@@ -51,9 +50,20 @@ class WUGAPIClient:
         self.verify_ssl = verify_ssl
         self.timeout = timeout
         
+        # Sanitize host - remove protocol if included
+        if host.startswith('http://') or host.startswith('https://'):
+            from urllib.parse import urlparse
+            parsed = urlparse(host)
+            self.host = parsed.hostname
+            # Use port from URL if not explicitly provided
+            if parsed.port and port == 9644:  # 9644 is default
+                self.port = parsed.port
+        else:
+            self.host = host
+        
         # Build base URL
         protocol = 'https' if use_ssl else 'http'
-        self.base_url = f"{protocol}://{host}:{port}/api"
+        self.base_url = f"{protocol}://{self.host}:{self.port}/api"
         
         # Session for connection reuse
         self.session = requests.Session()
