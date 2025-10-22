@@ -20,11 +20,6 @@ menu_items = (
         link_text='Dashboard',
     ),
     PluginMenuItem(
-        link='plugins:netbox_wug_sync:wugconnection_list',
-        link_text='Connections',
-        buttons=[add_connection_button]
-    ),
-    PluginMenuItem(
         link='plugins:netbox_wug_sync:wugdevice_list',
         link_text='Devices',
     ),

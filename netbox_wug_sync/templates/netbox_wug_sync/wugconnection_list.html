@@ -67,11 +67,11 @@
                                 onclick="testConnection({{ connection.pk }})">
                             <i class="mdi mdi-connection"></i>
                         </button>
-                        <button class="btn btn-outline-success" 
-                                title="Trigger Sync"
-                                onclick="triggerSync({{ connection.pk }})">
-                            <i class="mdi mdi-sync"></i>
-                        </button>
+                        <a href="{% url 'plugins:netbox_wug_sync:wugconnection_edit' pk=connection.pk %}" 
+                           class="btn btn-outline-secondary" 
+                           title="Edit Connection">
+                            <i class="mdi mdi-pencil"></i>
+                        </a>
                     </div>
                 </td>
             </tr>
@@ -119,40 +119,6 @@ function testConnection(connectionId) {
         button.innerHTML = originalHtml;
         button.disabled = false;
     });
-}
-
-function triggerSync(connectionId) {
-    if (confirm('Are you sure you want to trigger a sync for this connection?')) {
-        const button = event.target.closest('button');
-        const originalHtml = button.innerHTML;
-        
-        button.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i>';
-        button.disabled = true;
-        
-        fetch(`/plugins/wug-sync/connections/${connectionId}/sync/`, {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
-                'Content-Type': 'application/json'
-            }
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                alert(data.message);
-                location.reload();
-            } else {
-                alert(`Sync failed: ${data.message}`);
-            }
-        })
-        .catch(error => {
-            alert('Error triggering sync: ' + error.message);
-        })
-        .finally(() => {
-            button.innerHTML = originalHtml;
-            button.disabled = false;
-        });
-    }
 }
 </script>
 

@@ -234,7 +234,7 @@
                             <a href="{% url 'plugins:netbox_wug_sync:wugconnection_list' %}" class="btn btn-secondary ms-2">
                                 <i class="mdi mdi-arrow-left"></i> Cancel
                             </a>
-                            {% if object %}
+                            {% if object.pk %}
                                 <a href="{% url 'plugins:netbox_wug_sync:wugconnection' pk=object.pk %}" class="btn btn-outline-info ms-2">
                                     <i class="mdi mdi-eye"></i> View Details
                                 </a>

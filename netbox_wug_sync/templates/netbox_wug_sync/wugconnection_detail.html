@@ -125,9 +125,6 @@
                     <button class="btn btn-outline-primary" onclick="testConnection({{ object.pk }})">
                         <i class="mdi mdi-connection"></i> Test Connection
                     </button>
-                    <button class="btn btn-outline-success" onclick="triggerSync({{ object.pk }})">
-                        <i class="mdi mdi-sync"></i> Trigger Sync
-                    </button>
                     <a href="{% url 'plugins:netbox_wug_sync:wugconnection_edit' pk=object.pk %}" class="btn btn-outline-secondary">
                         <i class="mdi mdi-pencil"></i> Edit Connection
                     </a>
@@ -300,34 +297,11 @@ function testConnection(connectionId) {
     });
 }
 
-function triggerSync(connectionId) {
-    if (confirm('Are you sure you want to trigger a sync for this connection?')) {
-        const button = event.target;
-        const originalHtml = button.innerHTML;
-        
-        button.disabled = true;
-        button.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Starting...';
-        
-        fetch(`/plugins/wug-sync/connections/${connectionId}/sync/`, {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
-                'Content-Type': 'application/json'
-            }
-        })
-        .then(response => response.json())
-        .then(data => {
-            button.innerHTML = originalHtml;
-            button.disabled = false;
-            
-            if (data.success) {
-                alert(data.message);
-                location.reload();
-            } else {
-                alert(`Sync failed: ${data.message}`);
-            }
-        })
-        .catch(error => {
+}
+</script>
+
+{% csrf_token %}
+{% endblock %}
             button.innerHTML = originalHtml;
             button.disabled = false;
             alert('Error triggering sync: ' + error.message);
