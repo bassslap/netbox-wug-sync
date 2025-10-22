@@ -39,6 +39,14 @@ class WUGSyncConfig(PluginConfig):
     queues = [
         'wug_sync_queue'
     ]
+    
+    def ready(self):
+        """
+        Called when Django app is ready - register signal handlers
+        """
+        super().ready()
+        # Import signals to register them
+        from . import signals
 
 
 config = WUGSyncConfig

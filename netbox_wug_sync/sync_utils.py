@@ -719,3 +719,206 @@ def cleanup_orphaned_wug_devices(connection_id: int, active_wug_ids: List[str]) 
         )
     
     return count
+
+
+def sync_wug_connection(connection, sync_type: str = 'manual') -> Dict:
+    """
+    Sync devices for a specific WUG connection directly (bypassing JobRunner)
+    
+    Args:
+        connection: WUGConnection instance
+        sync_type: Type of sync operation ('manual', 'scheduled', 'api')
+        
+    Returns:
+        Dictionary with sync results
+    """
+    logger.info(f"Starting direct sync for connection: {connection.name}")
+    
+    from .models import WUGSyncLog
+    from .wug_client import WUGAPIClient
+    
+    # Create sync log entry
+    sync_log = WUGSyncLog.objects.create(
+        connection=connection,
+        sync_type=sync_type,
+        status='running',
+        devices_discovered=0,
+        devices_created=0,
+        devices_updated=0,
+        devices_errors=0
+    )
+    
+    devices_synced = 0
+    errors = 0
+    
+    try:
+        # Create WUG API client
+        with WUGAPIClient(
+            host=connection.host,
+            username=connection.username,
+            password=connection.get_password(),
+            port=connection.port,
+            use_ssl=connection.use_ssl,
+            verify_ssl=connection.verify_ssl
+        ) as client:
+            
+            # Test connection first
+            test_result = client.test_connection()
+            if not test_result.get('success', False):
+                error_msg = test_result.get('message', 'Connection test failed')
+                logger.error(f"WUG connection test failed: {error_msg}")
+                
+                # Update sync log
+                sync_log.status = 'failed'
+                sync_log.summary = f"Connection test failed: {error_msg}"
+                sync_log.end_time = datetime.now()
+                sync_log.save()
+                
+                return {
+                    'success': False,
+                    'message': error_msg,
+                    'devices_synced': 0,
+                    'errors': 1
+                }
+            
+            logger.info(f"WUG connection test successful for {connection.name}")
+            
+            # Get devices from WUG
+            wug_devices = client.get_devices(include_details=True)
+            devices_discovered = len(wug_devices)
+            
+            logger.info(f"Discovered {devices_discovered} devices from WUG")
+            
+            # Update sync log with discovered count
+            sync_log.devices_discovered = devices_discovered
+            sync_log.save()
+            
+            # Process each device
+            for device_data in wug_devices:
+                try:
+                    # Sync individual device
+                    result = sync_single_device(connection, device_data)
+                    
+                    if result['success']:
+                        if result['action'] == 'created':
+                            sync_log.devices_created += 1
+                        elif result['action'] == 'updated':
+                            sync_log.devices_updated += 1
+                        devices_synced += 1
+                    else:
+                        sync_log.devices_errors += 1
+                        errors += 1
+                        logger.error(f"Failed to sync device {device_data.get('name', 'unknown')}: {result.get('error')}")
+                        
+                except Exception as device_error:
+                    sync_log.devices_errors += 1
+                    errors += 1
+                    logger.error(f"Exception while syncing device {device_data.get('name', 'unknown')}: {str(device_error)}")
+            
+            # Update final sync log
+            sync_log.status = 'completed' if errors == 0 else 'completed_with_errors'
+            sync_log.end_time = datetime.now()
+            sync_log.success_rate = (devices_synced / devices_discovered * 100) if devices_discovered > 0 else 0
+            sync_log.summary = f"Synced {devices_synced} devices with {errors} errors"
+            sync_log.save()
+            
+            logger.info(f"Sync completed for {connection.name}: {devices_synced} devices synced, {errors} errors")
+            
+            return {
+                'success': True,
+                'devices_synced': devices_synced,
+                'errors': errors,
+                'devices_discovered': devices_discovered,
+                'message': f"Sync completed: {devices_synced} devices synced"
+            }
+            
+    except Exception as e:
+        logger.error(f"Exception during sync for connection {connection.name}: {str(e)}")
+        
+        # Update sync log with error
+        sync_log.status = 'error'
+        sync_log.end_time = datetime.now()
+        sync_log.summary = f"Sync failed with exception: {str(e)}"
+        sync_log.save()
+        
+        return {
+            'success': False,
+            'message': f"Sync failed: {str(e)}",
+            'devices_synced': devices_synced,
+            'errors': errors + 1
+        }
+
+
+def sync_single_device(connection, device_data: Dict) -> Dict:
+    """
+    Sync a single device from WUG to NetBox
+    
+    Args:
+        connection: WUGConnection instance
+        device_data: Device data from WUG API
+        
+    Returns:
+        Dictionary with sync result for this device
+    """
+    from .models import WUGDevice
+    
+    try:
+        device_name = device_data.get('name', device_data.get('displayName', 'Unknown'))
+        device_ip = device_data.get('ipAddress', device_data.get('primaryIPAddress'))
+        wug_device_id = device_data.get('id', device_data.get('deviceId'))
+        
+        if not device_name or not device_ip or not wug_device_id:
+            return {
+                'success': False,
+                'error': f"Missing required device data: name={device_name}, ip={device_ip}, id={wug_device_id}"
+            }
+        
+        logger.debug(f"Syncing device: {device_name} ({device_ip})")
+        
+        # Check if device already exists
+        existing_wug_device = WUGDevice.objects.filter(
+            connection=connection,
+            wug_device_id=wug_device_id
+        ).first()
+        
+        # Create or update NetBox device
+        netbox_device = create_or_update_netbox_device(device_data, connection)
+        
+        if netbox_device:
+            # Create or update WUGDevice record
+            if existing_wug_device:
+                existing_wug_device.netbox_device_id = netbox_device.id
+                existing_wug_device.device_name = device_name
+                existing_wug_device.ip_address = device_ip
+                existing_wug_device.last_sync = datetime.now()
+                existing_wug_device.sync_status = 'success'
+                existing_wug_device.save()
+                action = 'updated'
+            else:
+                WUGDevice.objects.create(
+                    connection=connection,
+                    wug_device_id=wug_device_id,
+                    netbox_device_id=netbox_device.id,
+                    device_name=device_name,
+                    ip_address=device_ip,
+                    sync_status='success'
+                )
+                action = 'created'
+            
+            return {
+                'success': True,
+                'action': action,
+                'device_name': device_name,
+                'netbox_device_id': netbox_device.id
+            }
+        else:
+            return {
+                'success': False,
+                'error': f"Failed to create/update NetBox device for {device_name}"
+            }
+            
+    except Exception as e:
+        return {
+            'success': False,
+            'error': f"Exception syncing device: {str(e)}"
+        }

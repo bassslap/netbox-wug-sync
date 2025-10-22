@@ -206,16 +206,63 @@ def trigger_sync_view(request, pk):
                 'connection_name': connection.name
             })
         
-        # Original working placeholder implementation that Dashboard expects
-        messages.success(request, f'Sync initiated for {connection.name}')
+        # Import here to avoid circular imports
+        from .sync_utils import sync_wug_connection
         
-        return JsonResponse({
-            'success': True,
-            'message': f'Sync initiated for {connection.name}'
-        })
+        # Run the actual sync directly
+        logger.info(f"Starting manual sync for connection {connection.name}")
+        
+        try:
+            # Call sync function directly instead of using JobRunner
+            result = sync_wug_connection(connection, sync_type='manual')
+            
+            if result and result.get('success', False):
+                devices_synced = result.get('devices_synced', 0)
+                errors = result.get('errors', 0)
+                
+                if errors == 0:
+                    messages.success(
+                        request, 
+                        f'Sync completed successfully for {connection.name}. '
+                        f'Devices synced: {devices_synced}'
+                    )
+                    return JsonResponse({
+                        'success': True,
+                        'message': f'Sync completed for {connection.name}',
+                        'devices_synced': devices_synced,
+                        'errors': errors
+                    })
+                else:
+                    messages.warning(
+                        request,
+                        f'Sync completed with {errors} error(s) for {connection.name}. '
+                        f'Devices synced: {devices_synced}'
+                    )
+                    return JsonResponse({
+                        'success': True,
+                        'message': f'Sync completed with {errors} error(s)',
+                        'devices_synced': devices_synced,
+                        'errors': errors
+                    })
+            else:
+                error_msg = result.get('message', 'Unknown sync error') if result else 'Sync failed'
+                messages.error(request, f'Sync failed for {connection.name}: {error_msg}')
+                return JsonResponse({
+                    'success': False,
+                    'message': f'Sync failed: {error_msg}'
+                })
+                
+        except Exception as sync_error:
+            logger.error(f"Sync error for connection {connection.name}: {str(sync_error)}")
+            messages.error(request, f'Sync error: {str(sync_error)}')
+            return JsonResponse({
+                'success': False,
+                'message': f'Sync error: {str(sync_error)}'
+            })
         
     except Exception as e:
         logger.error(f"Error in trigger_sync_view: {str(e)}")
+        messages.error(request, f'Failed to trigger sync: {str(e)}')
         return JsonResponse({
             'success': False,
             'message': f'Failed to trigger sync: {str(e)}'
