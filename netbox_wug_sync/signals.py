@@ -125,7 +125,7 @@ def sync_device_to_wug(netbox_device, wug_connection, ip_address, is_new_device=
         with WUGAPIClient(
             host=wug_connection.host,
             username=wug_connection.username,
-            password=wug_connection.get_password(),
+            password=wug_connection.password,  # Fix: Use password field directly
             port=wug_connection.port,
             use_ssl=wug_connection.use_ssl,
             verify_ssl=wug_connection.verify_ssl
@@ -223,7 +223,7 @@ def remove_device_from_wug(wug_device):
         with WUGAPIClient(
             host=wug_device.connection.host,
             username=wug_device.connection.username,
-            password=wug_device.connection.get_password(),
+            password=wug_device.connection.password,  # Fix: Use password field directly
             port=wug_device.connection.port,
             use_ssl=wug_device.connection.use_ssl,
             verify_ssl=wug_device.connection.verify_ssl

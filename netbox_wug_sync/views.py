@@ -237,7 +237,7 @@ def trigger_sync_view(request, pk):
             with WUGAPIClient(
                 host=connection.host,
                 username=connection.username,
-                password=connection.get_password(),
+                password=connection.password,  # Fix: Use password field directly
                 port=connection.port,
                 use_ssl=connection.use_ssl,
                 verify_ssl=connection.verify_ssl
