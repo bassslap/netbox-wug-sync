@@ -116,6 +116,22 @@ class WUGConnectionForm(NetBoxModelForm):
         
         return cleaned_data
     
+    def save(self, commit=True):
+        """Custom save to handle password preservation"""
+        instance = super().save(commit=False)
+        
+        # If password field is empty and we're editing an existing instance,
+        # preserve the existing password
+        if not self.cleaned_data.get('password') and self.instance.pk:
+            # Get the original instance from database to preserve password
+            original = WUGConnection.objects.get(pk=self.instance.pk)
+            instance.password = original.password
+        
+        if commit:
+            instance.save()
+        
+        return instance
+    
     def clean_host(self):
         """Validate host field"""
         host = self.cleaned_data.get('host')

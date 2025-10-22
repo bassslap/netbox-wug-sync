@@ -61,9 +61,9 @@ class WUGAPIClient:
         else:
             self.host = host
         
-        # Build base URL
+        # Build base URL - WhatsUp Gold API is at /api/v1
         protocol = 'https' if use_ssl else 'http'
-        self.base_url = f"{protocol}://{self.host}:{self.port}/api"
+        self.base_url = f"{protocol}://{self.host}:{self.port}/api/v1"
         
         # Session for connection reuse
         self.session = requests.Session()
@@ -105,7 +105,10 @@ class WUGAPIClient:
             WUGAPIException: For API errors
             WUGAuthenticationError: For authentication errors
         """
-        url = urljoin(self.base_url, endpoint.lstrip('/'))
+        # Build full URL - endpoint should start with /
+        if not endpoint.startswith('/'):
+            endpoint = '/' + endpoint
+        url = self.base_url + endpoint
         
         headers = {
             'Content-Type': 'application/json',
@@ -221,63 +224,62 @@ class WUGAPIClient:
         return datetime.now(timezone.utc) >= self._token_expires
     
     def _authenticate(self):
-        """Authenticate with WhatsUp Gold and get access token"""
+        """Authenticate with WhatsUp Gold using OAuth 2.0 password grant"""
+        logger.info(f"Starting WUG OAuth 2.0 authentication to {self.base_url}")
+        
+        # WhatsUp Gold uses OAuth 2.0 with password grant type
+        # Must use form-encoded data, not JSON
         auth_data = {
+            'grant_type': 'password',
             'username': self.username,
             'password': self.password
         }
         
-        # Debug logging (remove password from logs for security)
-        logger.info(f"Attempting authentication with username: '{self.username}' (password length: {len(self.password)})")
+        logger.info(f"Attempting OAuth 2.0 authentication with username: '{self.username}'")
         
-        # Try different WhatsUp Gold API authentication endpoints and methods
-        auth_attempts = [
-            ('/api/v1/token', 'json'),  # JSON payload
-            ('/api/token', 'json'),
-            ('/api/v1/token', 'basic'),  # Basic auth
-            ('/api/token', 'basic'),
-            ('/auth/token', 'json'),
-            ('/NmConsole/api/token', 'json')
-        ]
-        
-        last_error = None
-        for endpoint, auth_method in auth_attempts:
-            try:
-                logger.info(f"Trying authentication endpoint: {endpoint} with method: {auth_method}")
+        try:
+            # WhatsUp Gold token endpoint is at /api/v1/token (not within our base URL)
+            base_url_no_api = self.base_url.replace('/api/v1', '')
+            token_url = f"{base_url_no_api}/api/v1/token"
+            
+            logger.info(f"Posting to token endpoint: {token_url}")
+            
+            # OAuth 2.0 requires form-encoded data but JSON content-type (per PowerShell implementation)
+            response = requests.post(
+                token_url,
+                data=auth_data,  # Use data= for form encoding, not json=
+                headers={'Content-Type': 'application/json'},  # Match PowerShell implementation
+                verify=self.verify_ssl,
+                timeout=self.timeout
+            )
+            
+            logger.info(f"Authentication response: Status {response.status_code}")
+            
+            if response.status_code == 200:
+                data = response.json()
+                logger.info(f"OAuth response data keys: {list(data.keys())}")
                 
-                if auth_method == 'basic':
-                    # Try basic authentication
-                    import base64
-                    credentials = base64.b64encode(f"{self.username}:{self.password}".encode()).decode()
-                    headers = {'Authorization': f'Basic {credentials}'}
-                    response = self._make_request_raw('POST', endpoint, headers=headers)
-                else:
-                    # Try JSON payload authentication
-                    response = self._make_request('POST', endpoint, data=auth_data, authenticated=False)
-                
-                self._token = response.get('token') or response.get('access_token')
+                self._token = data.get('access_token')
                 if self._token:
-                    # Calculate token expiration (assume 1 hour if not provided)
-                    expires_in = response.get('expires_in', 3600)  # seconds
+                    # Calculate token expiration
+                    expires_in = data.get('expires_in', 3600)  # seconds
                     self._token_expires = datetime.now(timezone.utc).replace(
                         microsecond=0
                     ) + timedelta(seconds=expires_in - 60)  # Refresh 1 minute early
                     
-                    logger.info(f"Successfully authenticated with WhatsUp Gold using endpoint: {endpoint} method: {auth_method}")
+                    logger.info(f"Successfully authenticated with WhatsUp Gold! Token expires in {expires_in} seconds")
                     return
                 else:
-                    logger.warning(f"No token returned from endpoint {endpoint} method {auth_method}")
-                    
-            except Exception as e:
-                last_error = e
-                logger.warning(f"Authentication failed for endpoint {endpoint} method {auth_method}: {str(e)}")
-                continue
-        
-        # If all endpoints failed
-        if last_error:
-            raise WUGAuthenticationError(f"Authentication failed on all endpoints and methods. Last error: {str(last_error)}")
-        else:
-            raise WUGAuthenticationError("No token returned from any authentication endpoint or method")
+                    logger.error(f"No access_token in response: {data}")
+                    raise WUGAuthenticationError("No access_token returned from OAuth endpoint")
+            else:
+                error_text = response.text
+                logger.error(f"Authentication failed: Status {response.status_code}, Response: {error_text}")
+                raise WUGAuthenticationError(f"OAuth authentication failed: {response.status_code} - {error_text}")
+                
+        except requests.RequestException as e:
+            logger.error(f"Request error during authentication: {e}")
+            raise WUGAuthenticationError(f"Authentication request failed: {str(e)}")
     
     def test_connection(self) -> Dict:
         """
@@ -301,13 +303,49 @@ class WUGAPIClient:
             api_response = self.session.get(api_test_url, verify=self.verify_ssl, timeout=self.timeout)
             logger.info(f"API endpoint test: {api_response.status_code}")
             
-            # Try to get system information or device count as a test
-            response = self._make_request('GET', '/system/info')
-            return {
-                'success': True,
-                'message': 'Connection successful',
-                'server_info': response
-            }
+            # Try to discover available API endpoints based on working Swagger endpoints
+            logger.info("=== Testing WhatsUp Gold API v1 endpoints ===")
+            test_endpoints = [
+                '/product/version',     # Product version (working)
+                '/device-groups/-',     # Device groups (working)
+                '/monitors/-',          # Monitor templates (working)
+                '/credentials/-',       # Credentials (working)
+            ]
+            
+            working_endpoints = []
+            for endpoint in test_endpoints:
+                try:
+                    response = self._make_request('GET', endpoint)
+                    working_endpoints.append(endpoint)
+                    logger.info(f"✅ SUCCESS: {endpoint} - Status: 200")
+                    if isinstance(response, dict) and 'data' in response:
+                        data = response['data']
+                        if isinstance(data, list):
+                            logger.info(f"   Found {len(data)} items")
+                            # Show first item structure if available
+                            if len(data) > 0 and isinstance(data[0], dict):
+                                keys = list(data[0].keys())[:5]  # First 5 keys
+                                logger.info(f"   Sample keys: {keys}")
+                        elif isinstance(data, dict):
+                            keys = list(data.keys())[:5]  # First 5 keys
+                            logger.info(f"   Response keys: {keys}")
+                    else:
+                        logger.info(f"   Response type: {type(response)}")
+                except Exception as e:
+                    logger.info(f"❌ FAILED: {endpoint} - {str(e)}")
+            
+            if working_endpoints:
+                logger.info(f"🎉 Found working endpoints: {working_endpoints}")
+                return {
+                    'success': True,
+                    'message': f'Connection successful! Found {len(working_endpoints)} working endpoints.',
+                    'working_endpoints': working_endpoints
+                }
+            else:
+                return {
+                    'success': False,
+                    'message': 'Authentication successful but no API endpoints found. Check API documentation.'
+                }
         except WUGAuthenticationError:
             return {
                 'success': False,
@@ -335,20 +373,62 @@ class WUGAPIClient:
             List of device dictionaries
         """
         try:
-            # Get basic device list
-            devices = self._make_request('GET', '/devices')
+            all_devices = []
             
-            # Ensure we have a list
-            if isinstance(devices, dict):
-                devices = devices.get('devices', [])
+            # First get all device groups
+            groups_response = self._make_request('GET', '/device-groups/-')
             
+            if not isinstance(groups_response, dict) or 'data' not in groups_response:
+                logger.warning("Unexpected device groups response format")
+                return []
+            
+            groups_data = groups_response['data']
+            groups = groups_data.get('groups', [])
+            
+            logger.info(f"Found {len(groups)} device groups")
+            
+            # Get devices from each group
+            for group in groups:
+                group_id = group.get('id')
+                group_name = group.get('name', 'Unknown')
+                
+                if not group_id:
+                    continue
+                
+                try:
+                    logger.debug(f"Getting devices from group: {group_name} (ID: {group_id})")
+                    devices_response = self._make_request('GET', f'/device-groups/{group_id}/devices')
+                    
+                    if isinstance(devices_response, dict) and 'data' in devices_response:
+                        devices_data = devices_response['data']
+                        devices = devices_data.get('devices', [])
+                        
+                        # Add group information to devices
+                        for device in devices:
+                            device['group_id'] = group_id
+                            device['group_name'] = group_name
+                            
+                            # Avoid duplicates by checking device ID
+                            device_id = device.get('id')
+                            if device_id and not any(d.get('id') == device_id for d in all_devices):
+                                all_devices.append(device)
+                                
+                        logger.debug(f"Found {len(devices)} devices in group {group_name}")
+                        
+                except Exception as e:
+                    logger.warning(f"Failed to get devices from group {group_name}: {e}")
+                    continue
+            
+            logger.info(f"Total unique devices found: {len(all_devices)}")
+            
+            # Get detailed information if requested
             if include_details:
-                # Get detailed information for each device
                 detailed_devices = []
-                for device in devices:
-                    device_id = device.get('id') or device.get('deviceId')
+                for device in all_devices:
+                    device_id = device.get('id')
                     if device_id:
                         try:
+                            # Get detailed device information
                             detail = self.get_device_details(device_id)
                             device.update(detail)
                         except Exception as e:
@@ -356,7 +436,7 @@ class WUGAPIClient:
                     detailed_devices.append(device)
                 return detailed_devices
             
-            return devices
+            return all_devices
             
         except WUGAPIException:
             raise
@@ -603,29 +683,63 @@ class WUGAPIClient:
             Device creation result dictionary
         """
         try:
+            # Use the bulk new device endpoint for adding devices
+            # First, find the "Discovered Devices" group or default group
+            groups_response = self._make_request('GET', '/device-groups/-')
+            
+            target_group_id = None
+            if isinstance(groups_response, dict) and 'data' in groups_response:
+                groups = groups_response['data'].get('groups', [])
+                
+                # Look for "Discovered Devices" group first
+                for group in groups:
+                    if group.get('name') == 'Discovered Devices':
+                        target_group_id = group.get('id')
+                        break
+                
+                # If not found, use "My Network" as fallback
+                if not target_group_id:
+                    for group in groups:
+                        if group.get('name') == 'My Network':
+                            target_group_id = group.get('id')
+                            break
+                
+                # If still not found, use the first available group
+                if not target_group_id and groups:
+                    target_group_id = groups[0].get('id')
+            
+            if not target_group_id:
+                raise WUGAPIException("No suitable device group found for adding devices")
+            
+            # Prepare device addition data based on Swagger BulkNewDeviceOptions
             data = {
-                'ip_address': ip_address,
-                'discovery_method': 'ip'
+                'ipOrNames': [ip_address],
+                'forceAdd': False,  # Perform scanning
+                'resolveDNSHostNames': True,
+                'expandVirtualEnvironment': True,
+                'expandWirelessEnvironment': True,
+                'useAllCredentials': True
             }
             
             # Add device configuration if provided
             if device_config:
-                data.update(device_config)
+                # Map common device config options
+                if 'force_add' in device_config:
+                    data['forceAdd'] = device_config['force_add']
+                if 'force_create' in device_config:
+                    data['forceCreate'] = device_config['force_create']
+                if 'role' in device_config:
+                    data['forceRole'] = device_config['role']
+                if 'credentials' in device_config:
+                    data['credentials'] = device_config['credentials']
             
-            # Set defaults for NetBox-sourced devices
-            if 'device_name' not in data:
-                data['device_name'] = f"NetBox-{ip_address}"
-            
-            if 'group' not in data:
-                data['group'] = 'NetBox Imports'
-            
-            response = self._make_request('POST', '/devices/add-by-ip', data=data)
+            # Use PUT method as specified in Swagger
+            response = self._make_request('PUT', f'/device-groups/{target_group_id}/newDevice', data=data)
             
             return {
                 'success': True,
-                'device_id': response.get('device_id') or response.get('id'),
-                'message': f'Device added for IP {ip_address}',
-                'device_details': response
+                'message': f'Device addition initiated for IP {ip_address} in group {target_group_id}',
+                'operation_details': response
             }
             
         except WUGAPIException:
@@ -763,6 +877,84 @@ class WUGAPIClient:
         except Exception as e:
             raise WUGAPIException(f"Failed to bulk add IPs: {str(e)}")
 
+    def discover_endpoints(self):
+        """Discover available API endpoints using real WhatsUp Gold API paths."""
+        logger.info("Discovering WhatsUp Gold API endpoints...")
+        endpoints = {}
+        
+        # Based on actual working Swagger API endpoints
+        test_patterns = [
+            # Device management - primary endpoints for our sync
+            '/device-groups/-',          # Get all device groups (WORKING)
+            '/monitors/-',               # Get all monitors (WORKING)
+            '/credentials/-',            # Get all credentials (WORKING)
+            '/device-role/-',            # Get all device roles (WORKING)
+            
+            # Product information
+            '/product/version',          # Get product version (WORKING)
+            '/product/whoAmI',           # Get current user info (WORKING)
+            '/product/api',              # Get API info
+            '/product/timezone',         # Get timezone
+            
+            # Device operations (require device ID)
+            # '/devices/{deviceId}',       # Individual device operations
+            # '/devices/{deviceId}/status', # Device status
+            # '/devices/{deviceId}/properties', # Device properties
+        ]
+        
+        for pattern in test_patterns:
+            endpoint_url = f"{self.base_url}{pattern}"
+            try:
+                logger.debug(f"Testing endpoint: {endpoint_url}")
+                response = self.session.get(endpoint_url, timeout=10)
+                
+                if response.status_code == 200:
+                    logger.info(f"✓ Found working endpoint: {pattern}")
+                    endpoints[pattern] = {
+                        'url': endpoint_url,
+                        'status_code': response.status_code,
+                        'content_type': response.headers.get('content-type', 'unknown')
+                    }
+                    
+                    # Try to peek at the response structure
+                    try:
+                        json_data = response.json()
+                        if isinstance(json_data, dict):
+                            if 'data' in json_data:
+                                logger.debug(f"  Response has 'data' envelope")
+                                data = json_data['data']
+                                if isinstance(data, list):
+                                    logger.debug(f"  Data is list with {len(data)} items")
+                                elif isinstance(data, dict):
+                                    logger.debug(f"  Data is dict with keys: {list(data.keys())}")
+                            if 'paging' in json_data:
+                                logger.debug(f"  Response supports paging")
+                    except:
+                        pass
+                        
+                elif response.status_code == 401:
+                    logger.warning(f"✗ Authentication required for: {pattern}")
+                elif response.status_code == 403:
+                    logger.warning(f"✗ Access forbidden for: {pattern}")
+                elif response.status_code == 404:
+                    logger.debug(f"✗ Not found: {pattern}")
+                else:
+                    logger.debug(f"✗ Unexpected status {response.status_code} for: {pattern}")
+                    
+            except requests.exceptions.Timeout:
+                logger.debug(f"✗ Timeout for endpoint: {pattern}")
+            except requests.exceptions.RequestException as e:
+                logger.debug(f"✗ Request error for {pattern}: {e}")
+                
+        if endpoints:
+            logger.info(f"Found {len(endpoints)} working API endpoints")
+            for endpoint, info in endpoints.items():
+                logger.info(f"  {endpoint}: {info['status_code']} ({info['content_type']})")
+        else:
+            logger.warning("No working API endpoints found")
+            
+        return endpoints
+
 
 # Utility functions for data transformation
 def normalize_wug_device_data(wug_device: Dict) -> Dict:
@@ -775,8 +967,21 @@ def normalize_wug_device_data(wug_device: Dict) -> Dict:
     Returns:
         Normalized device data dictionary
     """
-    # Map common WUG field names to standardized names
+    # Map actual WUG field names to standardized names based on API response
     field_mapping = {
+        'id': 'id',
+        'name': 'name',
+        'hostName': 'hostname',
+        'networkAddress': 'ip_address',  # This is where IP addresses are stored
+        'role': 'device_type',
+        'brand': 'vendor',
+        'os': 'os_version',
+        'bestState': 'status',
+        'worstState': 'worst_status',
+        'description': 'description',
+        'notes': 'notes',
+        'group_name': 'group',
+        # Legacy mappings for other possible field names
         'deviceId': 'id',
         'deviceName': 'name',
         'displayName': 'display_name',
@@ -797,12 +1002,45 @@ def normalize_wug_device_data(wug_device: Dict) -> Dict:
     # Map known fields
     for wug_field, std_field in field_mapping.items():
         if wug_field in wug_device:
-            normalized[std_field] = wug_device[wug_field]
+            value = wug_device[wug_field]
+            # Only set non-empty values
+            if value is not None and value != '':
+                normalized[std_field] = value
+    
+    # Extract brand/model information if available
+    if 'brand' in wug_device and wug_device['brand']:
+        normalized['vendor'] = wug_device['brand']
+        # Use role as model if no specific model is available
+        if 'role' in wug_device and wug_device['role'] not in ['Device', 'Unknown']:
+            normalized['model'] = wug_device['role']
+    
+    # Map status values
+    if 'status' in normalized:
+        status_lower = str(normalized['status']).lower()
+        if status_lower in ['up', 'online', 'active']:
+            normalized['status'] = 'up'
+        elif status_lower in ['down', 'offline', 'inactive']:
+            normalized['status'] = 'down'
+        else:
+            normalized['status'] = 'unknown'
+    
+    # Ensure we have an ID
+    if 'id' not in normalized and 'id' in wug_device:
+        normalized['id'] = str(wug_device['id'])
+    
+    # Ensure we have a name
+    if 'name' not in normalized:
+        if 'hostname' in normalized:
+            normalized['name'] = normalized['hostname']
+        elif 'ip_address' in normalized:
+            normalized['name'] = normalized['ip_address']
+        else:
+            normalized['name'] = f"device-{normalized.get('id', 'unknown')}"
     
     # Keep original data for reference
     normalized['raw_data'] = wug_device
     
-    # Parse timestamps
+    # Parse timestamps if any
     if 'last_seen' in normalized and isinstance(normalized['last_seen'], str):
         try:
             normalized['last_seen'] = datetime.fromisoformat(normalized['last_seen'].replace('Z', '+00:00'))

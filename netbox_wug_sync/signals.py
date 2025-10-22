@@ -114,8 +114,8 @@ def sync_device_to_wug(netbox_device, wug_connection, ip_address, is_new_device=
     }
     
     # Add additional metadata
-    if netbox_device.device_role:
-        device_data['role'] = netbox_device.device_role.name
+    if netbox_device.role:
+        device_data['role'] = netbox_device.role.name
     
     if netbox_device.platform:
         device_data['platform'] = netbox_device.platform.name
