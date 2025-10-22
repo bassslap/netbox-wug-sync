@@ -166,6 +166,49 @@ class WUGAPIClient:
         except requests.exceptions.RequestException as e:
             raise WUGAPIException(f"Request error: {str(e)}")
     
+    def _make_request_raw(self, method: str, endpoint: str, headers: Dict = None) -> Dict:
+        """
+        Make raw HTTP request to WUG API (for basic auth)
+        
+        Args:
+            method: HTTP method (GET, POST, PUT, DELETE)
+            endpoint: API endpoint path
+            headers: Request headers
+            
+        Returns:
+            Response data as dictionary
+        """
+        url = urljoin(self.base_url, endpoint.lstrip('/'))
+        
+        default_headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        }
+        
+        if headers:
+            default_headers.update(headers)
+        
+        try:
+            logger.debug(f"Making {method} request to {url} with basic auth")
+            response = self.session.request(method, url, headers=default_headers, timeout=self.timeout)
+            
+            logger.debug(f"Response status: {response.status_code}")
+            response.raise_for_status()
+            
+            try:
+                return response.json()
+            except ValueError:
+                return {}
+                
+        except requests.exceptions.Timeout:
+            raise WUGAPIException(f"Request timeout after {self.timeout} seconds")
+        except requests.exceptions.ConnectionError as e:
+            raise WUGAPIException(f"Connection error: {str(e)}")
+        except requests.exceptions.HTTPError as e:
+            raise WUGAPIException(f"HTTP error {response.status_code}: {str(e)}")
+        except requests.exceptions.RequestException as e:
+            raise WUGAPIException(f"Request error: {str(e)}")
+    
     def _ensure_authenticated(self):
         """Ensure we have a valid authentication token"""
         if self._token is None or self._is_token_expired():
@@ -184,19 +227,33 @@ class WUGAPIClient:
             'password': self.password
         }
         
-        # Try different WhatsUp Gold API authentication endpoints
-        auth_endpoints = [
-            '/api/v1/token',  # Common WUG API v1
-            '/api/token',     # Alternative API path
-            '/auth/token',    # Original attempt
-            '/NmConsole/api/token'  # Legacy WUG path
+        # Debug logging (remove password from logs for security)
+        logger.info(f"Attempting authentication with username: '{self.username}' (password length: {len(self.password)})")
+        
+        # Try different WhatsUp Gold API authentication endpoints and methods
+        auth_attempts = [
+            ('/api/v1/token', 'json'),  # JSON payload
+            ('/api/token', 'json'),
+            ('/api/v1/token', 'basic'),  # Basic auth
+            ('/api/token', 'basic'),
+            ('/auth/token', 'json'),
+            ('/NmConsole/api/token', 'json')
         ]
         
         last_error = None
-        for endpoint in auth_endpoints:
+        for endpoint, auth_method in auth_attempts:
             try:
-                logger.info(f"Trying authentication endpoint: {endpoint}")
-                response = self._make_request('POST', endpoint, data=auth_data, authenticated=False)
+                logger.info(f"Trying authentication endpoint: {endpoint} with method: {auth_method}")
+                
+                if auth_method == 'basic':
+                    # Try basic authentication
+                    import base64
+                    credentials = base64.b64encode(f"{self.username}:{self.password}".encode()).decode()
+                    headers = {'Authorization': f'Basic {credentials}'}
+                    response = self._make_request_raw('POST', endpoint, headers=headers)
+                else:
+                    # Try JSON payload authentication
+                    response = self._make_request('POST', endpoint, data=auth_data, authenticated=False)
                 
                 self._token = response.get('token') or response.get('access_token')
                 if self._token:
@@ -206,21 +263,21 @@ class WUGAPIClient:
                         microsecond=0
                     ) + timedelta(seconds=expires_in - 60)  # Refresh 1 minute early
                     
-                    logger.info(f"Successfully authenticated with WhatsUp Gold using endpoint: {endpoint}")
+                    logger.info(f"Successfully authenticated with WhatsUp Gold using endpoint: {endpoint} method: {auth_method}")
                     return
                 else:
-                    logger.warning(f"No token returned from endpoint {endpoint}")
+                    logger.warning(f"No token returned from endpoint {endpoint} method {auth_method}")
                     
-            except WUGAPIException as e:
+            except Exception as e:
                 last_error = e
-                logger.debug(f"Authentication failed for endpoint {endpoint}: {str(e)}")
+                logger.warning(f"Authentication failed for endpoint {endpoint} method {auth_method}: {str(e)}")
                 continue
         
         # If all endpoints failed
         if last_error:
-            raise WUGAuthenticationError(f"Authentication failed on all endpoints. Last error: {str(last_error)}")
+            raise WUGAuthenticationError(f"Authentication failed on all endpoints and methods. Last error: {str(last_error)}")
         else:
-            raise WUGAuthenticationError("No token returned from any authentication endpoint")
+            raise WUGAuthenticationError("No token returned from any authentication endpoint or method")
     
     def test_connection(self) -> Dict:
         """
