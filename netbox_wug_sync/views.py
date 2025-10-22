@@ -203,7 +203,8 @@ def trigger_sync_view(request, pk):
             return JsonResponse({
                 'message': f'Sync endpoint for {connection.name} is accessible (GET test)',
                 'connection_id': pk,
-                'connection_name': connection.name
+                'connection_name': connection.name,
+                'debug_version': 'v2.0-debug-detailed-sync'  # Version identifier
             })
         
         # Simple debug sync approach
