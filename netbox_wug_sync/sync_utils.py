@@ -742,6 +742,7 @@ def sync_wug_connection(connection, sync_type: str = 'manual') -> Dict:
         connection=connection,
         sync_type=sync_type,
         status='running',
+        start_time=datetime.now(),  # Fix: Add start_time
         devices_discovered=0,
         devices_created=0,
         devices_updated=0,

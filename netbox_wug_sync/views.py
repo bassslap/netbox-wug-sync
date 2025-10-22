@@ -221,6 +221,7 @@ def trigger_sync_view(request, pk):
                 connection=connection,
                 sync_type='manual',
                 status='running',
+                start_time=datetime.now(),  # Fix: Add start_time
                 devices_discovered=0,
                 devices_created=0,
                 devices_updated=0,
