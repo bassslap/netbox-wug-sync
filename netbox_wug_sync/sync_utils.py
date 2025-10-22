@@ -12,6 +12,7 @@ from typing import Dict, List, Optional, Tuple
 
 from dcim.models import Site, DeviceType, DeviceRole, Manufacturer, Device
 from dcim.choices import DeviceStatusChoices
+from extras.models import Tag
 
 
 logger = logging.getLogger(__name__)
@@ -721,6 +722,91 @@ def cleanup_orphaned_wug_devices(connection_id: int, active_wug_ids: List[str]) 
     return count
 
 
+def get_or_create_wug_tag():
+    """
+    Get or create the 'wug' tag for marking devices synced from WhatsUp Gold
+    
+    Returns:
+        Tag instance
+    """
+    tag, created = Tag.objects.get_or_create(
+        name='wug',
+        defaults={
+            'slug': 'wug',
+            'color': '2196f3',  # Blue color
+            'description': 'Device synced from WhatsUp Gold'
+        }
+    )
+    return tag
+
+
+def create_netbox_device_from_wug_data(wug_device_data: Dict, connection) -> Device:
+    """
+    Create a NetBox device from normalized WUG device data
+    
+    Args:
+        wug_device_data: Normalized device data from WUG
+        connection: WUGConnection instance
+        
+    Returns:
+        Device instance or None if creation failed
+    """
+    try:
+        device_name = wug_device_data.get('name')
+        device_ip = wug_device_data.get('ip_address')
+        vendor = wug_device_data.get('vendor', 'Unknown')
+        device_type_name = wug_device_data.get('device_type', 'Unknown')
+        group_name = wug_device_data.get('group', 'Default')
+        
+        # Check if device already exists
+        existing_device = Device.objects.filter(name=device_name).first()
+        if existing_device:
+            logger.debug(f"Device {device_name} already exists in NetBox")
+            return existing_device
+        
+        # Create site from group name if auto-create is enabled
+        site = None
+        if connection.auto_create_sites and group_name:
+            site = find_or_create_site(group_name)
+        else:
+            site = get_or_create_default_site()
+        
+        # Create device type if auto-create is enabled
+        device_type = None
+        if connection.auto_create_device_types:
+            device_type = find_or_create_device_type(vendor, device_type_name)
+        else:
+            device_type = get_or_create_default_device_type()
+        
+        # Get device role
+        device_role = connection.default_device_role
+        if not device_role:
+            device_role = find_or_create_device_role('server')
+        
+        # Create the device
+        device = Device.objects.create(
+            name=device_name,
+            device_type=device_type,
+            role=device_role,
+            site=site,
+            status=map_wug_status_to_netbox(wug_device_data.get('status', 'active'))
+        )
+        
+        # Add the "wug" tag to identify devices synced from WhatsUp Gold
+        wug_tag = get_or_create_wug_tag()
+        device.tags.add(wug_tag)
+        
+        # TODO: Create IP address and assign as primary
+        # This would require creating an IP address in IPAM and assigning it
+        
+        logger.info(f"Created NetBox device: {device_name} (ID: {device.id}) with 'wug' tag")
+        return device
+        
+    except Exception as e:
+        logger.error(f"Failed to create NetBox device for {device_name}: {str(e)}")
+        return None
+
+
 def sync_wug_connection(connection, sync_type: str = 'manual') -> Dict:
     """
     Sync devices for a specific WUG connection directly (bypassing JobRunner)
@@ -797,8 +883,12 @@ def sync_wug_connection(connection, sync_type: str = 'manual') -> Dict:
             # Process each device
             for device_data in wug_devices:
                 try:
-                    # Sync individual device
-                    result = sync_single_device(connection, device_data)
+                    # Normalize device data first
+                    from .wug_client import normalize_wug_device_data
+                    normalized_device_data = normalize_wug_device_data(device_data)
+                    
+                    # Sync individual device with normalized data
+                    result = sync_single_device(connection, normalized_device_data)
                     
                     if result['success']:
                         if result['action'] == 'created':
@@ -819,7 +909,6 @@ def sync_wug_connection(connection, sync_type: str = 'manual') -> Dict:
             # Update final sync log
             sync_log.status = 'completed' if errors == 0 else 'completed_with_errors'
             sync_log.end_time = datetime.now()
-            sync_log.success_rate = (devices_synced / devices_discovered * 100) if devices_discovered > 0 else 0
             sync_log.summary = f"Synced {devices_synced} devices with {errors} errors"
             sync_log.save()
             
@@ -864,9 +953,9 @@ def sync_single_device(connection, device_data: Dict) -> Dict:
     from .models import WUGDevice
     
     try:
-        device_name = device_data.get('name', device_data.get('displayName', 'Unknown'))
-        device_ip = device_data.get('ipAddress', device_data.get('primaryIPAddress'))
-        wug_device_id = device_data.get('id', device_data.get('deviceId'))
+        device_name = device_data.get('name', 'Unknown')
+        device_ip = device_data.get('ip_address')  # Use normalized field name
+        wug_device_id = device_data.get('id')  # Use normalized field name
         
         if not device_name or not device_ip or not wug_device_id:
             return {
@@ -879,30 +968,33 @@ def sync_single_device(connection, device_data: Dict) -> Dict:
         # Check if device already exists
         existing_wug_device = WUGDevice.objects.filter(
             connection=connection,
-            wug_device_id=wug_device_id
+            wug_id=wug_device_id
         ).first()
         
         # Create or update NetBox device
-        netbox_device = create_or_update_netbox_device(device_data, connection)
+        netbox_device = create_netbox_device_from_wug_data(device_data, connection)
         
         if netbox_device:
             # Create or update WUGDevice record
             if existing_wug_device:
-                existing_wug_device.netbox_device_id = netbox_device.id
-                existing_wug_device.device_name = device_name
-                existing_wug_device.ip_address = device_ip
-                existing_wug_device.last_sync = datetime.now()
+                existing_wug_device.netbox_device = netbox_device
+                existing_wug_device.wug_name = device_name
+                existing_wug_device.wug_ip_address = device_ip
+                existing_wug_device.last_sync_attempt = datetime.now()
+                existing_wug_device.last_sync_success = datetime.now()
                 existing_wug_device.sync_status = 'success'
                 existing_wug_device.save()
                 action = 'updated'
             else:
                 WUGDevice.objects.create(
                     connection=connection,
-                    wug_device_id=wug_device_id,
-                    netbox_device_id=netbox_device.id,
-                    device_name=device_name,
-                    ip_address=device_ip,
-                    sync_status='success'
+                    wug_id=str(wug_device_id),
+                    wug_name=device_name,
+                    wug_ip_address=device_ip,
+                    netbox_device=netbox_device,
+                    sync_status='success',
+                    last_sync_attempt=datetime.now(),
+                    last_sync_success=datetime.now()
                 )
                 action = 'created'
             

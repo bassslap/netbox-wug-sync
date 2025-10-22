@@ -329,12 +329,12 @@ def trigger_sync_view(request, pk):
                 
                 messages.success(
                     request, 
-                    f'Debug sync completed! Found {device_count} devices from WUG. Check sync logs for details.'
+                    f'Sync completed! Found {device_count} devices from WUG. Check sync logs for details.'
                 )
                 
                 return JsonResponse({
                     'success': True,
-                    'message': f'Debug sync completed - found {device_count} devices',
+                    'message': f'Sync completed - found {device_count} devices',
                     'devices_found': device_count,
                     'connection_test': test_result,
                     'sync_log_id': sync_log.id
