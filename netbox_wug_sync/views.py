@@ -206,66 +206,124 @@ def trigger_sync_view(request, pk):
                 'connection_name': connection.name
             })
         
-        # Import here to avoid circular imports
-        from .sync_utils import sync_wug_connection
-        
-        # Run the actual sync directly
-        logger.info(f"Starting manual sync for connection {connection.name}")
+        # Simple debug sync approach
+        logger.info(f"Starting debug sync for connection {connection.name}")
         
         try:
-            # Call sync function directly instead of using JobRunner
-            result = sync_wug_connection(connection, sync_type='manual')
+            # Import WUG client directly
+            from .wug_client import WUGAPIClient
+            from .models import WUGSyncLog
+            from datetime import datetime
             
-            if result and result.get('success', False):
-                devices_synced = result.get('devices_synced', 0)
-                errors = result.get('errors', 0)
+            # Create basic sync log
+            sync_log = WUGSyncLog.objects.create(
+                connection=connection,
+                sync_type='manual',
+                status='running',
+                devices_discovered=0,
+                devices_created=0,
+                devices_updated=0,
+                devices_errors=0,
+                summary="Starting debug sync..."
+            )
+            
+            logger.info(f"Created sync log ID: {sync_log.id}")
+            
+            # Test WUG connection
+            logger.info(f"Testing WUG connection to {connection.host}:{connection.port}")
+            
+            with WUGAPIClient(
+                host=connection.host,
+                username=connection.username,
+                password=connection.get_password(),
+                port=connection.port,
+                use_ssl=connection.use_ssl,
+                verify_ssl=connection.verify_ssl
+            ) as client:
                 
-                if errors == 0:
-                    messages.success(
-                        request, 
-                        f'Sync completed successfully for {connection.name}. '
-                        f'Devices synced: {devices_synced}'
-                    )
+                # Test connection
+                test_result = client.test_connection()
+                logger.info(f"Connection test result: {test_result}")
+                
+                if not test_result.get('success', False):
+                    error_msg = test_result.get('message', 'Connection test failed')
+                    logger.error(f"WUG connection failed: {error_msg}")
+                    
+                    sync_log.status = 'failed'
+                    sync_log.summary = f"Connection test failed: {error_msg}"
+                    sync_log.end_time = datetime.now()
+                    sync_log.save()
+                    
+                    messages.error(request, f'WUG connection failed: {error_msg}')
                     return JsonResponse({
-                        'success': True,
-                        'message': f'Sync completed for {connection.name}',
-                        'devices_synced': devices_synced,
-                        'errors': errors
+                        'success': False,
+                        'message': f'Connection failed: {error_msg}',
+                        'connection_test': test_result
                     })
-                else:
-                    messages.warning(
-                        request,
-                        f'Sync completed with {errors} error(s) for {connection.name}. '
-                        f'Devices synced: {devices_synced}'
-                    )
-                    return JsonResponse({
-                        'success': True,
-                        'message': f'Sync completed with {errors} error(s)',
-                        'devices_synced': devices_synced,
-                        'errors': errors
-                    })
-            else:
-                error_msg = result.get('message', 'Unknown sync error') if result else 'Sync failed'
-                messages.error(request, f'Sync failed for {connection.name}: {error_msg}')
+                
+                # Connection successful - try to get devices
+                logger.info("Connection successful, fetching devices...")
+                devices = client.get_devices(include_details=False)  # Start with basic info
+                device_count = len(devices) if devices else 0
+                
+                logger.info(f"Retrieved {device_count} devices from WUG")
+                
+                # Update sync log
+                sync_log.devices_discovered = device_count
+                sync_log.status = 'completed'
+                sync_log.summary = f"Successfully connected and found {device_count} devices"
+                sync_log.end_time = datetime.now()
+                sync_log.save()
+                
+                messages.success(
+                    request, 
+                    f'Debug sync completed! Found {device_count} devices from WUG. Check sync logs for details.'
+                )
+                
                 return JsonResponse({
-                    'success': False,
-                    'message': f'Sync failed: {error_msg}'
+                    'success': True,
+                    'message': f'Debug sync completed - found {device_count} devices',
+                    'devices_found': device_count,
+                    'connection_test': test_result,
+                    'sync_log_id': sync_log.id
                 })
                 
-        except Exception as sync_error:
-            logger.error(f"Sync error for connection {connection.name}: {str(sync_error)}")
-            messages.error(request, f'Sync error: {str(sync_error)}')
+        except ImportError as import_error:
+            error_msg = f"Import error: {str(import_error)}"
+            logger.error(error_msg)
+            messages.error(request, error_msg)
             return JsonResponse({
                 'success': False,
-                'message': f'Sync error: {str(sync_error)}'
+                'message': error_msg
+            })
+            
+        except Exception as sync_error:
+            error_msg = f"Sync error: {str(sync_error)}"
+            logger.error(f"Debug sync error: {error_msg}")
+            
+            # Try to update sync log if it exists
+            try:
+                if 'sync_log' in locals():
+                    sync_log.status = 'error'
+                    sync_log.summary = error_msg
+                    sync_log.end_time = datetime.now()
+                    sync_log.save()
+            except:
+                pass
+            
+            messages.error(request, error_msg)
+            return JsonResponse({
+                'success': False,
+                'message': error_msg
             })
         
     except Exception as e:
-        logger.error(f"Error in trigger_sync_view: {str(e)}")
-        messages.error(request, f'Failed to trigger sync: {str(e)}')
+        error_msg = f"View error: {str(e)}"
+        logger.error(f"Error in trigger_sync_view: {error_msg}")
+        messages.error(request, error_msg)
         return JsonResponse({
             'success': False,
-            'message': f'Failed to trigger sync: {str(e)}'
+            'message': error_msg
         })
 
 
