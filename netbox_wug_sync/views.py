@@ -235,6 +235,33 @@ def trigger_sync_view(request, pk):
             logger.info(f"Testing WUG connection to {connection.host}:{connection.port}")
             logger.info(f"Connection details: host='{connection.host}', port={connection.port}, use_ssl={connection.use_ssl}")
             
+            # First, let's test basic connectivity and see what endpoints are available
+            import requests
+            base_url = f"https://{connection.host}:{connection.port}"
+            
+            # Test basic connectivity to different common endpoints
+            test_endpoints = [
+                "/api",
+                "/api/v1", 
+                "/api/devices",
+                "/api/v1/devices",
+                "/NmConsole/api",
+                "/help",
+                "/docs"
+            ]
+            
+            available_endpoints = []
+            for test_endpoint in test_endpoints:
+                try:
+                    test_url = base_url + test_endpoint
+                    logger.info(f"Testing endpoint availability: {test_url}")
+                    response = requests.get(test_url, timeout=10, verify=False)
+                    available_endpoints.append(f"{test_endpoint} -> {response.status_code}")
+                except Exception as e:
+                    available_endpoints.append(f"{test_endpoint} -> ERROR: {str(e)[:50]}")
+            
+            logger.info(f"Available endpoints: {available_endpoints}")
+            
             with WUGAPIClient(
                 host=connection.host,
                 username=connection.username,
@@ -264,8 +291,30 @@ def trigger_sync_view(request, pk):
                         'connection_test': test_result
                     })
                 
-                # Connection successful - try to get devices
-                logger.info("Connection successful, fetching devices...")
+                # Connection successful - let's also test what endpoints respond
+                logger.info("Connection successful, testing API endpoints...")
+                
+                # Try to discover what kind of API this WhatsUp Gold installation has
+                test_api_endpoints = [
+                    '/devices',
+                    '/system/info', 
+                    '/version',
+                    '/health',
+                    '/status'
+                ]
+                
+                api_responses = []
+                for api_endpoint in test_api_endpoints:
+                    try:
+                        test_resp = client._make_request_raw('GET', api_endpoint)
+                        api_responses.append(f"{api_endpoint} -> SUCCESS")
+                    except Exception as e:
+                        api_responses.append(f"{api_endpoint} -> {str(e)[:50]}")
+                
+                logger.info(f"API endpoint responses: {api_responses}")
+                
+                # Try to get devices
+                logger.info("Fetching devices...")
                 devices = client.get_devices(include_details=False)  # Start with basic info
                 device_count = len(devices) if devices else 0
                 

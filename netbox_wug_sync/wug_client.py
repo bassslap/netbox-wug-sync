@@ -287,6 +287,20 @@ class WUGAPIClient:
             Dictionary with connection test results
         """
         try:
+            # First test basic connectivity without authentication
+            test_url = f"{self.base_url.split('/api')[0]}"
+            logger.info(f"Testing basic connectivity to: {test_url}")
+            
+            response = self.session.get(test_url, verify=self.verify_ssl, timeout=self.timeout)
+            logger.info(f"Basic connectivity test: {response.status_code}")
+            
+            # Test if API endpoint exists at all
+            api_test_url = self.base_url
+            logger.info(f"Testing API endpoint: {api_test_url}")
+            
+            api_response = self.session.get(api_test_url, verify=self.verify_ssl, timeout=self.timeout)
+            logger.info(f"API endpoint test: {api_response.status_code}")
+            
             # Try to get system information or device count as a test
             response = self._make_request('GET', '/system/info')
             return {
