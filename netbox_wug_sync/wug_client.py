@@ -184,25 +184,43 @@ class WUGAPIClient:
             'password': self.password
         }
         
-        try:
-            response = self._make_request('POST', '/auth/token', data=auth_data, authenticated=False)
-            
-            self._token = response.get('token') or response.get('access_token')
-            if not self._token:
-                raise WUGAuthenticationError("No token returned from authentication")
-            
-            # Calculate token expiration (assume 1 hour if not provided)
-            expires_in = response.get('expires_in', 3600)  # seconds
-            self._token_expires = datetime.now(timezone.utc).replace(
-                microsecond=0
-            ) + timedelta(seconds=expires_in - 60)  # Refresh 1 minute early
-            
-            logger.info("Successfully authenticated with WhatsUp Gold")
-            
-        except WUGAPIException:
-            raise
-        except Exception as e:
-            raise WUGAuthenticationError(f"Authentication failed: {str(e)}")
+        # Try different WhatsUp Gold API authentication endpoints
+        auth_endpoints = [
+            '/api/v1/token',  # Common WUG API v1
+            '/api/token',     # Alternative API path
+            '/auth/token',    # Original attempt
+            '/NmConsole/api/token'  # Legacy WUG path
+        ]
+        
+        last_error = None
+        for endpoint in auth_endpoints:
+            try:
+                logger.info(f"Trying authentication endpoint: {endpoint}")
+                response = self._make_request('POST', endpoint, data=auth_data, authenticated=False)
+                
+                self._token = response.get('token') or response.get('access_token')
+                if self._token:
+                    # Calculate token expiration (assume 1 hour if not provided)
+                    expires_in = response.get('expires_in', 3600)  # seconds
+                    self._token_expires = datetime.now(timezone.utc).replace(
+                        microsecond=0
+                    ) + timedelta(seconds=expires_in - 60)  # Refresh 1 minute early
+                    
+                    logger.info(f"Successfully authenticated with WhatsUp Gold using endpoint: {endpoint}")
+                    return
+                else:
+                    logger.warning(f"No token returned from endpoint {endpoint}")
+                    
+            except WUGAPIException as e:
+                last_error = e
+                logger.debug(f"Authentication failed for endpoint {endpoint}: {str(e)}")
+                continue
+        
+        # If all endpoints failed
+        if last_error:
+            raise WUGAuthenticationError(f"Authentication failed on all endpoints. Last error: {str(last_error)}")
+        else:
+            raise WUGAuthenticationError("No token returned from any authentication endpoint")
     
     def test_connection(self) -> Dict:
         """
