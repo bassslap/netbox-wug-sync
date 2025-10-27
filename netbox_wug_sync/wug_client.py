@@ -683,8 +683,60 @@ class WUGAPIClient:
             Device creation result dictionary
         """
         try:
-            # Use the bulk new device endpoint for adding devices
-            # First, find the "Discovered Devices" group or default group
+            # In WhatsUp Gold, devices are managed as "monitors"
+            # Try to add the device using the monitors endpoint first
+            monitor_data = {
+                'networkAddress': ip_address,
+                'displayName': device_config.get('displayName', ip_address) if device_config else ip_address,
+                'description': device_config.get('description', f'Device added from NetBox: {ip_address}') if device_config else f'Device added from NetBox: {ip_address}',
+                'enabled': True,
+                'monitoringSettings': {
+                    'enableMonitoring': True
+                }
+            }
+            
+            # Add device configuration if provided
+            if device_config:
+                if 'community' in device_config:
+                    monitor_data['snmpCommunity'] = device_config['community']
+                if 'snmpVersion' in device_config:
+                    monitor_data['snmpVersion'] = device_config['snmpVersion']
+                if 'location' in device_config:
+                    monitor_data['location'] = device_config['location']
+                if 'contact' in device_config:
+                    monitor_data['contact'] = device_config['contact']
+            
+            # Try POST to /monitors/- endpoint first
+            try:
+                response = self._make_request('POST', '/monitors/-', data=monitor_data)
+                device_id = response.get('id') or response.get('monitorId') or response.get('deviceId')
+                
+                return {
+                    'success': True,
+                    'deviceId': device_id,
+                    'id': device_id,
+                    'message': f'Monitor successfully added for IP {ip_address}',
+                    'response': response
+                }
+            except WUGAPIException as e:
+                if "405" in str(e) or "Method Not Allowed" in str(e) or "404" in str(e):
+                    # If POST /monitors/- fails, fallback to the bulk new device approach
+                    logger.info(f"POST /monitors/- failed, trying bulk newDevice approach for {ip_address}")
+                    return self._add_device_via_bulk_endpoint(ip_address, device_config)
+                else:
+                    raise
+            
+        except WUGAPIException:
+            raise
+        except Exception as e:
+            raise WUGAPIException(f"Failed to add device by IP {ip_address}: {str(e)}")
+    
+    def _add_device_via_bulk_endpoint(self, ip_address: str, device_config: Dict = None) -> Dict:
+        """
+        Fallback method to add device using the bulk newDevice endpoint
+        """
+        try:
+            # Find a suitable device group
             groups_response = self._make_request('GET', '/device-groups/-')
             
             target_group_id = None
@@ -733,19 +785,29 @@ class WUGAPIClient:
                 if 'credentials' in device_config:
                     data['credentials'] = device_config['credentials']
             
-            # Use PUT method as specified in Swagger
-            response = self._make_request('PUT', f'/device-groups/{target_group_id}/newDevice', data=data)
+            # Try both POST and PUT methods for the newDevice endpoint
+            for method in ['POST', 'PUT']:
+                try:
+                    response = self._make_request(method, f'/device-groups/{target_group_id}/newDevice', data=data)
+                    
+                    return {
+                        'success': True,
+                        'message': f'Device addition initiated for IP {ip_address} in group {target_group_id} via {method}',
+                        'operation_details': response
+                    }
+                except WUGAPIException as e:
+                    if "405" in str(e) and method == 'POST':
+                        # Try PUT if POST fails
+                        continue
+                    else:
+                        raise
             
-            return {
-                'success': True,
-                'message': f'Device addition initiated for IP {ip_address} in group {target_group_id}',
-                'operation_details': response
-            }
+            raise WUGAPIException(f"Both POST and PUT methods failed for newDevice endpoint")
             
         except WUGAPIException:
             raise
         except Exception as e:
-            raise WUGAPIException(f"Failed to add device by IP {ip_address}: {str(e)}")
+            raise WUGAPIException(f"Failed to add device via bulk endpoint for IP {ip_address}: {str(e)}")
     
     def update_device_metadata(self, device_id: Union[int, str], metadata: Dict) -> Dict:
         """

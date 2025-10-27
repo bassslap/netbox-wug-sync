@@ -10,6 +10,7 @@ from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from django.utils import timezone
 from dcim.models import Device
+from dcim.choices import DeviceStatusChoices
 from ipam.models import IPAddress
 
 from .models import WUGConnection, WUGDevice, WUGSyncLog
@@ -32,7 +33,7 @@ def device_saved_handler(sender, instance, created, **kwargs):
         logger.debug(f"Device {instance.name} has no primary IPv4 address, skipping WUG sync")
         return
     
-    if instance.status != 'active':
+    if instance.status != DeviceStatusChoices.STATUS_ACTIVE:
         logger.debug(f"Device {instance.name} is not active (status: {instance.status}), skipping WUG sync")
         return
     
@@ -156,6 +157,22 @@ def sync_device_to_wug(netbox_device, wug_connection, ip_address, is_new_device=
                 
                 logger.info(f"Successfully {action}d device {netbox_device.name} in WUG (ID: {wug_device_id})")
                 
+                # Trigger scan for the newly added device
+                if action == "create":
+                    logger.info(f"Triggering scan for newly added device {netbox_device.name} at {ip_address}")
+                    try:
+                        scan_result = client.scan_ip_address(ip_address)
+                        if scan_result.get('success', False):
+                            logger.info(f"Successfully triggered scan for device {netbox_device.name}")
+                            
+                            # Check for IP conflicts during the scan
+                            check_ip_conflicts_after_scan(ip_address, netbox_device, wug_connection, client)
+                        else:
+                            scan_error = scan_result.get('message', 'Unknown scan error')
+                            logger.warning(f"Failed to trigger scan for device {netbox_device.name}: {scan_error}")
+                    except Exception as scan_e:
+                        logger.warning(f"Exception while scanning device {netbox_device.name}: {str(scan_e)}")
+                
                 # Create sync log entry
                 WUGSyncLog.objects.create(
                     connection=wug_connection,
@@ -258,3 +275,99 @@ def remove_device_from_wug(wug_device):
                 
     except Exception as e:
         logger.error(f"Exception while removing device {wug_device.device_name} from WUG: {str(e)}")
+
+
+def check_ip_conflicts_after_scan(ip_address, netbox_device, wug_connection, wug_client):
+    """
+    Check for IP conflicts after a device scan
+    
+    This function looks for other devices in both NetBox and WUG that have the same
+    IP address and creates appropriate warnings.
+    
+    Args:
+        ip_address: IP address to check for conflicts
+        netbox_device: The NetBox device that was just added
+        wug_connection: WUG connection instance 
+        wug_client: Authenticated WUG API client instance
+    """
+    conflicts_found = []
+    
+    try:
+        # Check for conflicts in NetBox first
+        conflicting_netbox_devices = Device.objects.filter(
+            primary_ip4__address__startswith=ip_address
+        ).exclude(id=netbox_device.id)
+        
+        for conflict_device in conflicting_netbox_devices:
+            conflicts_found.append({
+                'type': 'netbox',
+                'device_name': conflict_device.name,
+                'device_id': conflict_device.id,
+                'ip_address': str(conflict_device.primary_ip4.address).split('/')[0],
+                'location': conflict_device.site.name if conflict_device.site else 'Unknown'
+            })
+        
+        # Check for conflicts in WUG by getting all devices and comparing IPs
+        try:
+            wug_devices = wug_client.get_devices()
+            if wug_devices.get('success', False):
+                device_list = wug_devices.get('devices', [])
+                
+                for wug_device in device_list:
+                    device_ip = wug_device.get('ipAddress') or wug_device.get('networkAddress')
+                    device_name = wug_device.get('displayName') or wug_device.get('name', 'Unknown')
+                    device_id = wug_device.get('id') or wug_device.get('deviceId')
+                    
+                    if device_ip == ip_address:
+                        # Check if this is not the device we just added
+                        our_wug_device = WUGDevice.objects.filter(
+                            connection=wug_connection,
+                            netbox_device_id=netbox_device.id
+                        ).first()
+                        
+                        if not our_wug_device or str(our_wug_device.wug_device_id) != str(device_id):
+                            conflicts_found.append({
+                                'type': 'wug',
+                                'device_name': device_name,
+                                'device_id': device_id,
+                                'ip_address': device_ip,
+                                'location': wug_device.get('location', 'Unknown')
+                            })
+        except Exception as wug_e:
+            logger.warning(f"Could not check WUG for IP conflicts: {str(wug_e)}")
+        
+        # Log warnings for any conflicts found
+        if conflicts_found:
+            conflict_summary = []
+            for conflict in conflicts_found:
+                conflict_summary.append(
+                    f"{conflict['type'].upper()}: {conflict['device_name']} "
+                    f"(ID: {conflict['device_id']}, Location: {conflict['location']})"
+                )
+            
+            warning_message = (
+                f"⚠️  IP CONFLICT DETECTED for {ip_address}! "
+                f"Device {netbox_device.name} shares this IP with: {'; '.join(conflict_summary)}"
+            )
+            
+            logger.warning(warning_message)
+            
+            # Create a sync log entry to record the conflict
+            WUGSyncLog.objects.create(
+                connection=wug_connection,
+                sync_type='ip_conflict_check',
+                status='warning',
+                start_time=timezone.now(),
+                end_time=timezone.now(),
+                devices_discovered=len(conflicts_found) + 1,  # Include the original device
+                devices_created=0,
+                devices_updated=0,
+                devices_errors=0,
+                summary=warning_message
+            )
+            
+        else:
+            logger.info(f"✅ No IP conflicts detected for {ip_address}")
+            
+    except Exception as e:
+        logger.error(f"Exception while checking IP conflicts for {ip_address}: {str(e)}")
