@@ -764,8 +764,71 @@ def create_netbox_device_from_wug_data(wug_device_data: Dict, connection) -> Dev
         # Check if device already exists
         existing_device = Device.objects.filter(name=device_name).first()
         if existing_device:
-            print(f"DEBUG: Device {device_name} already exists, returning existing")
-            logger.debug(f"Device {device_name} already exists in NetBox")
+            print(f"DEBUG: Device {device_name} already exists, checking IP assignment")
+            logger.debug(f"Device {device_name} already exists in NetBox, checking IP assignment")
+            
+            # Check if the device has a primary IP assigned
+            if not existing_device.primary_ip4 and device_ip:
+                print(f"DEBUG: Device {device_name} missing primary IP, assigning {device_ip}")
+                logger.info(f"Device {device_name} missing primary IP, assigning {device_ip}")
+                
+                try:
+                    from ipam.models import IPAddress
+                    from dcim.models import Interface
+                    
+                    # Check if IP address already exists
+                    ip_address = IPAddress.objects.filter(address=f"{device_ip}/32").first()
+                    
+                    if not ip_address:
+                        # Create new IP address
+                        ip_address = IPAddress.objects.create(
+                            address=f"{device_ip}/32",
+                            description=f"Primary IP for {device_name} (synced from WUG)"
+                        )
+                        logger.info(f"Created IP address: {ip_address.address}")
+                    else:
+                        logger.info(f"IP address {device_ip}/32 already exists")
+                    
+                    # Create a management interface if it doesn't exist
+                    interface_name = "mgmt0"
+                    interface = Interface.objects.filter(
+                        device=existing_device,
+                        name=interface_name
+                    ).first()
+                    
+                    if not interface:
+                        interface = Interface.objects.create(
+                            device=existing_device,
+                            name=interface_name,
+                            type="virtual",
+                            description=f"Management interface (synced from WUG)"
+                        )
+                        logger.info(f"Created interface: {interface.name}")
+                    else:
+                        logger.info(f"Interface {interface_name} already exists")
+                    
+                    # Assign IP to interface
+                    ip_address.assigned_object = interface
+                    ip_address.save()
+                    logger.info(f"Assigned IP {ip_address.address} to interface {interface.name}")
+                    
+                    # Set as primary IP for device
+                    existing_device.primary_ip4 = ip_address
+                    existing_device.save()
+                    
+                    logger.info(f"Assigned primary IP {device_ip} to existing device {device_name}")
+                    print(f"DEBUG: Successfully assigned IP {device_ip} to {device_name}")
+                    
+                except Exception as ip_error:
+                    logger.error(f"Failed to assign IP address {device_ip} to existing device {device_name}: {str(ip_error)}")
+                    import traceback
+                    logger.error(f"Traceback: {traceback.format_exc()}")
+            else:
+                if existing_device.primary_ip4:
+                    print(f"DEBUG: Device {device_name} already has primary IP: {existing_device.primary_ip4}")
+                else:
+                    print(f"DEBUG: Device {device_name} has no IP data from WUG")
+            
             return existing_device
         
         # Create site from group name if auto-create is enabled
