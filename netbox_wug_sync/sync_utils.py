@@ -752,15 +752,19 @@ def create_netbox_device_from_wug_data(wug_device_data: Dict, connection) -> Dev
         Device instance or None if creation failed
     """
     try:
+        print(f"DEBUG: Function start - processing device data: {wug_device_data.get('name')}")
         device_name = wug_device_data.get('name')
         device_ip = wug_device_data.get('ip_address')
         vendor = wug_device_data.get('vendor', 'Unknown')
         device_type_name = wug_device_data.get('device_type', 'Unknown')
         group_name = wug_device_data.get('group', 'Default')
         
+        print(f"DEBUG: Variables extracted - device_name={device_name}, device_ip={device_ip}")
+        
         # Check if device already exists
         existing_device = Device.objects.filter(name=device_name).first()
         if existing_device:
+            print(f"DEBUG: Device {device_name} already exists, returning existing")
             logger.debug(f"Device {device_name} already exists in NetBox")
             return existing_device
         
@@ -792,12 +796,70 @@ def create_netbox_device_from_wug_data(wug_device_data: Dict, connection) -> Dev
             status=map_wug_status_to_netbox(wug_device_data.get('status', 'active'))
         )
         
+        logger.debug(f"Device created successfully: {device.name} (ID: {device.id})")
+        
         # Add the "wug" tag to identify devices synced from WhatsUp Gold
         wug_tag = get_or_create_wug_tag()
         device.tags.add(wug_tag)
         
-        # TODO: Create IP address and assign as primary
-        # This would require creating an IP address in IPAM and assigning it
+        logger.debug(f"WUG tag added to device {device.name}")
+        
+        # Create IP address and assign as primary if IP is provided
+        if device_ip:
+            logger.info(f"Assigning IP {device_ip} to device {device_name}")
+            print(f"DEBUG: Starting IP assignment for {device_name} with IP {device_ip}")
+            try:
+                from ipam.models import IPAddress
+                from dcim.models import Interface
+                
+                # Check if IP address already exists
+                ip_address = IPAddress.objects.filter(address=f"{device_ip}/32").first()
+                
+                if not ip_address:
+                    # Create new IP address
+                    ip_address = IPAddress.objects.create(
+                        address=f"{device_ip}/32",
+                        description=f"Primary IP for {device_name} (synced from WUG)"
+                    )
+                    logger.info(f"Created IP address: {ip_address.address}")
+                else:
+                    logger.info(f"IP address {device_ip}/32 already exists")
+                
+                # Create a management interface if it doesn't exist
+                interface_name = "mgmt0"
+                interface = Interface.objects.filter(
+                    device=device,
+                    name=interface_name
+                ).first()
+                
+                if not interface:
+                    interface = Interface.objects.create(
+                        device=device,
+                        name=interface_name,
+                        type="virtual",
+                        description=f"Management interface (synced from WUG)"
+                    )
+                    logger.info(f"Created interface: {interface.name}")
+                else:
+                    logger.info(f"Interface {interface_name} already exists")
+                
+                # Assign IP to interface
+                ip_address.assigned_object = interface
+                ip_address.save()
+                logger.info(f"Assigned IP {ip_address.address} to interface {interface.name}")
+                
+                # Set as primary IP for device
+                device.primary_ip4 = ip_address
+                device.save()
+                
+                logger.info(f"Assigned primary IP {device_ip} to device {device_name}")
+                
+            except Exception as ip_error:
+                logger.error(f"Failed to assign IP address {device_ip} to device {device_name}: {str(ip_error)}")
+                import traceback
+                logger.error(f"Traceback: {traceback.format_exc()}")
+        else:
+            logger.warning(f"No IP address provided for device {device_name}, skipping IP assignment")
         
         logger.info(f"Created NetBox device: {device_name} (ID: {device.id}) with 'wug' tag")
         return device
