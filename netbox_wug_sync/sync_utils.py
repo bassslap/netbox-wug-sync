@@ -740,7 +740,7 @@ def get_or_create_wug_tag():
     return tag
 
 
-def create_netbox_device_from_wug_data(wug_device_data: Dict, connection) -> Device:
+def  create_netbox_device_from_wug_data(wug_device_data: Dict, connection) -> Device:
     """
     Create a NetBox device from normalized WUG device data
     
@@ -1007,29 +1007,46 @@ def sync_wug_connection(connection, sync_type: str = 'manual') -> Dict:
             
             # Process each device
             for device_data in wug_devices:
+                device_name = device_data.get('name', 'unknown')
+                logger.info(f"Processing device: {device_name}")
+                print(f"DEBUG: Starting to process device: {device_name}")
+                
                 try:
                     # Normalize device data first
                     from .wug_client import normalize_wug_device_data
+                    logger.info(f"Normalizing data for device: {device_name}")
                     normalized_device_data = normalize_wug_device_data(device_data)
+                    logger.info(f"Normalized device data: name={normalized_device_data.get('name')}, ip={normalized_device_data.get('ip_address')}, id={normalized_device_data.get('id')}")
+                    print(f"DEBUG: Normalized {device_name} - IP: {normalized_device_data.get('ip_address')}, ID: {normalized_device_data.get('id')}")
                     
                     # Sync individual device with normalized data
+                    logger.info(f"Calling sync_single_device for: {device_name}")
                     result = sync_single_device(connection, normalized_device_data)
+                    logger.info(f"Sync result for {device_name}: {result}")
+                    print(f"DEBUG: Sync result for {device_name}: {result}")
                     
                     if result['success']:
                         if result['action'] == 'created':
                             sync_log.devices_created += 1
+                            logger.info(f"Device {device_name} CREATED successfully")
                         elif result['action'] == 'updated':
                             sync_log.devices_updated += 1
+                            logger.info(f"Device {device_name} UPDATED successfully")
                         devices_synced += 1
                     else:
                         sync_log.devices_errors += 1
                         errors += 1
-                        logger.error(f"Failed to sync device {device_data.get('name', 'unknown')}: {result.get('error')}")
+                        logger.error(f"Failed to sync device {device_name}: {result.get('error')}")
+                        print(f"DEBUG ERROR: Failed to sync {device_name}: {result.get('error')}")
                         
                 except Exception as device_error:
                     sync_log.devices_errors += 1
                     errors += 1
-                    logger.error(f"Exception while syncing device {device_data.get('name', 'unknown')}: {str(device_error)}")
+                    logger.error(f"Exception while syncing device {device_name}: {str(device_error)}")
+                    print(f"DEBUG EXCEPTION: {device_name}: {str(device_error)}")
+                    import traceback
+                    logger.error(f"Traceback: {traceback.format_exc()}")
+                    print(f"DEBUG TRACEBACK: {traceback.format_exc()}")
             
             # Update final sync log
             sync_log.status = 'completed' if errors == 0 else 'completed_with_errors'
@@ -1082,13 +1099,20 @@ def sync_single_device(connection, device_data: Dict) -> Dict:
         device_ip = device_data.get('ip_address')  # Use normalized field name
         wug_device_id = device_data.get('id')  # Use normalized field name
         
+        logger.info(f"sync_single_device called for: {device_name}, IP: {device_ip}, ID: {wug_device_id}")
+        print(f"DEBUG sync_single_device: {device_name}, IP: {device_ip}, ID: {wug_device_id}")
+        
         if not device_name or not device_ip or not wug_device_id:
+            error_msg = f"Missing required device data: name={device_name}, ip={device_ip}, id={wug_device_id}"
+            logger.error(error_msg)
+            print(f"DEBUG ERROR: {error_msg}")
             return {
                 'success': False,
-                'error': f"Missing required device data: name={device_name}, ip={device_ip}, id={wug_device_id}"
+                'error': error_msg
             }
         
         logger.debug(f"Syncing device: {device_name} ({device_ip})")
+        print(f"DEBUG: All required fields present for {device_name}")
         
         # Check if device already exists
         existing_wug_device = WUGDevice.objects.filter(
@@ -1096,12 +1120,25 @@ def sync_single_device(connection, device_data: Dict) -> Dict:
             wug_id=wug_device_id
         ).first()
         
+        if existing_wug_device:
+            logger.info(f"WUGDevice record already exists for {device_name}")
+            print(f"DEBUG: WUGDevice record exists for {device_name}")
+        else:
+            logger.info(f"No existing WUGDevice record for {device_name}, will create new")
+            print(f"DEBUG: No existing WUGDevice for {device_name}")
+        
         # Create or update NetBox device
+        logger.info(f"Calling create_netbox_device_from_wug_data for {device_name}")
+        print(f"DEBUG: Calling create_netbox_device_from_wug_data for {device_name}")
         netbox_device = create_netbox_device_from_wug_data(device_data, connection)
         
         if netbox_device:
+            logger.info(f"create_netbox_device_from_wug_data returned device: {netbox_device.name} (ID: {netbox_device.id})")
+            print(f"DEBUG: Got NetBox device: {netbox_device.name} (ID: {netbox_device.id})")
             # Create or update WUGDevice record
             if existing_wug_device:
+                logger.info(f"Updating existing WUGDevice record for {device_name}")
+                print(f"DEBUG: Updating WUGDevice record for {device_name}")
                 existing_wug_device.netbox_device = netbox_device
                 existing_wug_device.wug_name = device_name
                 existing_wug_device.wug_ip_address = device_ip
@@ -1110,7 +1147,10 @@ def sync_single_device(connection, device_data: Dict) -> Dict:
                 existing_wug_device.sync_status = 'success'
                 existing_wug_device.save()
                 action = 'updated'
+                logger.info(f"WUGDevice record updated for {device_name}")
             else:
+                logger.info(f"Creating new WUGDevice record for {device_name}")
+                print(f"DEBUG: Creating new WUGDevice record for {device_name}")
                 WUGDevice.objects.create(
                     connection=connection,
                     wug_id=str(wug_device_id),
@@ -1122,7 +1162,11 @@ def sync_single_device(connection, device_data: Dict) -> Dict:
                     last_sync_success=datetime.now()
                 )
                 action = 'created'
+                logger.info(f"WUGDevice record created for {device_name}")
+                print(f"DEBUG: WUGDevice record created for {device_name}")
             
+            logger.info(f"Successfully synced {device_name} - action: {action}")
+            print(f"DEBUG: SUCCESS - {device_name} - action: {action}")
             return {
                 'success': True,
                 'action': action,
@@ -1130,13 +1174,22 @@ def sync_single_device(connection, device_data: Dict) -> Dict:
                 'netbox_device_id': netbox_device.id
             }
         else:
+            error_msg = f"Failed to create/update NetBox device for {device_name}"
+            logger.error(error_msg)
+            print(f"DEBUG ERROR: {error_msg}")
             return {
                 'success': False,
-                'error': f"Failed to create/update NetBox device for {device_name}"
+                'error': error_msg
             }
             
     except Exception as e:
+        error_msg = f"Exception syncing device: {str(e)}"
+        logger.error(error_msg)
+        print(f"DEBUG EXCEPTION in sync_single_device: {error_msg}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        print(f"DEBUG TRACEBACK: {traceback.format_exc()}")
         return {
             'success': False,
-            'error': f"Exception syncing device: {str(e)}"
+            'error': error_msg
         }
