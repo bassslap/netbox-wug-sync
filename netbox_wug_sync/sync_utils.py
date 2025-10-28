@@ -45,10 +45,6 @@ def find_or_create_site(site_name: str, site_slug: str = None) -> Site:
     
     # Try to find existing site
     try:
-    # TEST: Write to /tmp to confirm code execution and container
-    with open('/tmp/wug_sync_test.log', 'w') as f:
-        f.write(f"Sync started at {datetime.now()}\n")
-        f.flush()
         site = Site.objects.get(slug=site_slug)
         logger.debug(f"Found existing site: {site.name}")
         return site
@@ -947,6 +943,15 @@ def sync_wug_connection(connection, sync_type: str = 'manual') -> Dict:
     Returns:
         Dictionary with sync results
     """
+    # TEST: Write to /tmp to confirm code execution and container
+    try:
+        with open('/tmp/wug_sync_test.log', 'w') as f:
+            f.write(f"Sync started at {datetime.now()}\n")
+            f.write(f"Connection: {connection.name}\n")
+            f.flush()
+    except Exception as e:
+        pass  # Ignore file write errors
+    
     logger.info(f"Starting direct sync for connection: {connection.name}")
     
     from .models import WUGSyncLog
