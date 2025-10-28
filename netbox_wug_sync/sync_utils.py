@@ -1083,9 +1083,12 @@ def sync_wug_connection(connection, sync_type: str = 'manual') -> Dict:
                     print(f"DEBUG TRACEBACK: {traceback.format_exc()}")
             
             # Update final sync log
-            sync_log.status = 'completed' if errors == 0 else 'completed_with_errors'
+            sync_log.status = 'completed' if errors == 0 else 'failed'
             sync_log.end_time = datetime.now()
-            sync_log.summary = f"Synced {devices_synced} devices with {errors} errors"
+            if errors == 0:
+                sync_log.summary = f"Successfully synced {devices_synced} devices"
+            else:
+                sync_log.summary = f"Synced {devices_synced} devices with {errors} errors"
             sync_log.save()
             
             logger.info(f"Sync completed for {connection.name}: {devices_synced} devices synced, {errors} errors")
