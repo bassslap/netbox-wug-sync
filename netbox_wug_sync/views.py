@@ -313,32 +313,38 @@ def trigger_sync_view(request, pk):
                 
                 logger.info(f"API endpoint responses: {api_responses}")
                 
-                # Try to get devices
-                logger.info("Fetching devices...")
-                devices = client.get_devices(include_details=False)  # Start with basic info
-                device_count = len(devices) if devices else 0
+                # Actually perform the sync
+                logger.info("Starting full device sync...")
+                from .sync_utils import sync_wug_connection
                 
-                logger.info(f"Retrieved {device_count} devices from WUG")
+                sync_result = sync_wug_connection(connection)
                 
-                # Update sync log
-                sync_log.devices_discovered = device_count
-                sync_log.status = 'completed'
-                sync_log.summary = f"Successfully connected and found {device_count} devices"
-                sync_log.end_time = datetime.now()
-                sync_log.save()
+                logger.info(f"Sync completed: {sync_result}")
                 
-                messages.success(
-                    request, 
-                    f'Sync completed! Found {device_count} devices from WUG. Check sync logs for details.'
-                )
-                
-                return JsonResponse({
-                    'success': True,
-                    'message': f'Sync completed - found {device_count} devices',
-                    'devices_found': device_count,
-                    'connection_test': test_result,
-                    'sync_log_id': sync_log.id
-                })
+                if sync_result.get('success'):
+                    messages.success(
+                        request, 
+                        f"Sync completed! Discovered: {sync_result.get('devices_discovered')}, "
+                        f"Created: {sync_result.get('devices_synced')}, "
+                        f"Errors: {sync_result.get('errors')}"
+                    )
+                    
+                    return JsonResponse({
+                        'success': True,
+                        'message': sync_result.get('message'),
+                        'devices_discovered': sync_result.get('devices_discovered'),
+                        'devices_synced': sync_result.get('devices_synced'),
+                        'errors': sync_result.get('errors'),
+                        'connection_test': test_result,
+                        'sync_log_id': sync_log.id
+                    })
+                else:
+                    messages.error(request, f"Sync failed: {sync_result.get('message')}")
+                    return JsonResponse({
+                        'success': False,
+                        'message': sync_result.get('message'),
+                        'connection_test': test_result
+                    })
                 
         except ImportError as import_error:
             error_msg = f"Import error: {str(import_error)}"
