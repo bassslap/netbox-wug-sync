@@ -8,27 +8,6 @@ register = template.Library()
 
 
 @register.filter
-def div(value, divisor):
-    """
-    Divide a value by a divisor.
-    
-    Usage in templates:
-    {{ value|div:60 }}
-    
-    Args:
-        value: The number to divide
-        divisor: The number to divide by
-        
-    Returns:
-        The result of value / divisor, or 0 if divisor is 0
-    """
-    try:
-        return float(value) / float(divisor) if float(divisor) != 0 else 0
-    except (ValueError, TypeError, ZeroDivisionError):
-        return 0
-
-
-@register.filter
 def format_duration(seconds):
     """
     Format duration in seconds to a human-readable format.

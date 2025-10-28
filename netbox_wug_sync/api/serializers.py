@@ -13,16 +13,12 @@ from ..models import WUGConnection, WUGDevice, WUGSyncLog
 class WUGConnectionSerializer(NetBoxModelSerializer):
     """Serializer for WUGConnection model"""
     
-    url = serializers.HyperlinkedIdentityField(
-    view_name='plugins-api:netbox_wug_sync-api:wugconnection-detail'
-    )
-    
     device_count = serializers.SerializerMethodField()
     
     class Meta:
         model = WUGConnection
         fields = [
-            'id', 'url', 'display', 'name', 'host', 'port', 'username',
+            'id', 'display', 'name', 'host', 'port', 'username',
             'use_ssl', 'verify_ssl', 'is_active', 'sync_interval_minutes',
             'auto_create_sites', 'auto_create_device_types', 'default_device_role',
             'last_sync', 'device_count', 'created', 'last_updated'
@@ -51,17 +47,13 @@ class WUGConnectionCreateSerializer(serializers.ModelSerializer):
 class WUGDeviceSerializer(NetBoxModelSerializer):
     """Serializer for WUGDevice model"""
     
-    url = serializers.HyperlinkedIdentityField(
-    view_name='plugins-api:netbox_wug_sync-api:wugdevice-detail'
-    )
-    
     connection = serializers.StringRelatedField()
     netbox_device = serializers.StringRelatedField()
     
     class Meta:
         model = WUGDevice
         fields = [
-            'id', 'url', 'display', 'wug_id', 'wug_name', 'wug_display_name',
+            'id', 'display', 'wug_id', 'wug_name', 'wug_display_name',
             'wug_ip_address', 'wug_mac_address', 'wug_device_type', 'wug_vendor',
             'wug_model', 'wug_os_version', 'wug_group', 'wug_location',
             'wug_status', 'wug_last_seen', 'connection', 'netbox_device',
@@ -73,10 +65,6 @@ class WUGDeviceSerializer(NetBoxModelSerializer):
 class WUGSyncLogSerializer(NetBoxModelSerializer):
     """Serializer for WUGSyncLog model"""
     
-    url = serializers.HyperlinkedIdentityField(
-    view_name='plugins-api:netbox_wug_sync-api:wugsynclog-detail'
-    )
-    
     connection = serializers.StringRelatedField()
     duration = serializers.SerializerMethodField()
     success_rate = serializers.SerializerMethodField()
@@ -84,7 +72,7 @@ class WUGSyncLogSerializer(NetBoxModelSerializer):
     class Meta:
         model = WUGSyncLog
         fields = [
-            'id', 'url', 'display', 'connection', 'sync_type', 'status',
+            'id', 'display', 'connection', 'sync_type', 'status',
             'start_time', 'end_time', 'duration', 'devices_discovered',
             'devices_created', 'devices_updated', 'devices_skipped',
             'devices_errors', 'success_rate', 'error_message', 'summary', 'created'
