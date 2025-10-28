@@ -211,140 +211,36 @@ def trigger_sync_view(request, pk):
         logger.info(f"Starting debug sync for connection {connection.name}")
         
         try:
-            # Import WUG client directly
-            from .wug_client import WUGAPIClient
-            from .models import WUGSyncLog
+            # Call the actual sync function instead of just discovering devices
+            from .sync_utils import sync_wug_connection
             from datetime import datetime
             
-            # Create basic sync log
-            sync_log = WUGSyncLog.objects.create(
-                connection=connection,
-                sync_type='manual',
-                status='running',
-                start_time=datetime.now(),  # Fix: Add start_time
-                devices_discovered=0,
-                devices_created=0,
-                devices_updated=0,
-                devices_errors=0,
-                summary="Starting debug sync..."
-            )
+            logger.info(f"Calling sync_wug_connection for {connection.name}")
             
-            logger.info(f"Created sync log ID: {sync_log.id}")
+            # Call the actual sync function
+            result = sync_wug_connection(connection, sync_type='manual')
             
-            # Test WUG connection
-            logger.info(f"Testing WUG connection to {connection.host}:{connection.port}")
-            logger.info(f"Connection details: host='{connection.host}', port={connection.port}, use_ssl={connection.use_ssl}")
+            logger.info(f"Sync result: {result}")
             
-            # First, let's test basic connectivity and see what endpoints are available
-            import requests
-            base_url = f"https://{connection.host}:{connection.port}"
-            
-            # Test basic connectivity to different common endpoints
-            test_endpoints = [
-                "/api",
-                "/api/v1", 
-                "/api/devices",
-                "/api/v1/devices",
-                "/NmConsole/api",
-                "/help",
-                "/docs"
-            ]
-            
-            available_endpoints = []
-            for test_endpoint in test_endpoints:
-                try:
-                    test_url = base_url + test_endpoint
-                    logger.info(f"Testing endpoint availability: {test_url}")
-                    response = requests.get(test_url, timeout=10, verify=False)
-                    available_endpoints.append(f"{test_endpoint} -> {response.status_code}")
-                except Exception as e:
-                    available_endpoints.append(f"{test_endpoint} -> ERROR: {str(e)[:50]}")
-            
-            logger.info(f"Available endpoints: {available_endpoints}")
-            
-            with WUGAPIClient(
-                host=connection.host,
-                username=connection.username,
-                password=connection.password,  # Fix: Use password field directly
-                port=connection.port,
-                use_ssl=connection.use_ssl,
-                verify_ssl=connection.verify_ssl
-            ) as client:
+            if result['success']:
+                messages.success(
+                    request, 
+                    f"Sync completed! {result['message']}"
+                )
                 
-                # Test connection
-                test_result = client.test_connection()
-                logger.info(f"Connection test result: {test_result}")
-                
-                if not test_result.get('success', False):
-                    error_msg = test_result.get('message', 'Connection test failed')
-                    logger.error(f"WUG connection failed: {error_msg}")
-                    
-                    sync_log.status = 'failed'
-                    sync_log.summary = f"Connection test failed: {error_msg}"
-                    sync_log.end_time = datetime.now()
-                    sync_log.save()
-                    
-                    messages.error(request, f'WUG connection failed: {error_msg}')
-                    return JsonResponse({
-                        'success': False,
-                        'message': f'Connection failed: {error_msg}',
-                        'connection_test': test_result
-                    })
-                
-                # Connection successful - let's also test what endpoints respond
-                logger.info("Connection successful, testing API endpoints...")
-                
-                # Try to discover what kind of API this WhatsUp Gold installation has
-                test_api_endpoints = [
-                    '/devices',
-                    '/system/info', 
-                    '/version',
-                    '/health',
-                    '/status'
-                ]
-                
-                api_responses = []
-                for api_endpoint in test_api_endpoints:
-                    try:
-                        test_resp = client._make_request_raw('GET', api_endpoint)
-                        api_responses.append(f"{api_endpoint} -> SUCCESS")
-                    except Exception as e:
-                        api_responses.append(f"{api_endpoint} -> {str(e)[:50]}")
-                
-                logger.info(f"API endpoint responses: {api_responses}")
-                
-                # Actually perform the sync
-                logger.info("Starting full device sync...")
-                from .sync_utils import sync_wug_connection
-                
-                sync_result = sync_wug_connection(connection)
-                
-                logger.info(f"Sync completed: {sync_result}")
-                
-                if sync_result.get('success'):
-                    messages.success(
-                        request, 
-                        f"Sync completed! Discovered: {sync_result.get('devices_discovered')}, "
-                        f"Created: {sync_result.get('devices_synced')}, "
-                        f"Errors: {sync_result.get('errors')}"
-                    )
-                    
-                    return JsonResponse({
-                        'success': True,
-                        'message': sync_result.get('message'),
-                        'devices_discovered': sync_result.get('devices_discovered'),
-                        'devices_synced': sync_result.get('devices_synced'),
-                        'errors': sync_result.get('errors'),
-                        'connection_test': test_result,
-                        'sync_log_id': sync_log.id
-                    })
-                else:
-                    messages.error(request, f"Sync failed: {sync_result.get('message')}")
-                    return JsonResponse({
-                        'success': False,
-                        'message': sync_result.get('message'),
-                        'connection_test': test_result
-                    })
+                return JsonResponse({
+                    'success': True,
+                    'message': result['message'],
+                    'devices_synced': result.get('devices_synced', 0),
+                    'devices_discovered': result.get('devices_discovered', 0),
+                    'errors': result.get('errors', 0)
+                })
+            else:
+                messages.error(request, f"Sync failed: {result['message']}")
+                return JsonResponse({
+                    'success': False,
+                    'message': result['message']
+                })
                 
         except ImportError as import_error:
             error_msg = f"Import error: {str(import_error)}"
@@ -357,17 +253,9 @@ def trigger_sync_view(request, pk):
             
         except Exception as sync_error:
             error_msg = f"Sync error: {str(sync_error)}"
-            logger.error(f"Debug sync error: {error_msg}")
-            
-            # Try to update sync log if it exists
-            try:
-                if 'sync_log' in locals():
-                    sync_log.status = 'error'
-                    sync_log.summary = error_msg
-                    sync_log.end_time = datetime.now()
-                    sync_log.save()
-            except:
-                pass
+            logger.error(f"Sync error: {error_msg}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             
             messages.error(request, error_msg)
             return JsonResponse({
