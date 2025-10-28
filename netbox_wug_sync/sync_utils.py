@@ -1006,6 +1006,16 @@ def sync_wug_connection(connection, sync_type: str = 'manual') -> Dict:
             sync_log.save()
             
             # Process each device
+            # ADD FILE LOGGING
+            with open('/tmp/wug_sync_debug.log', 'w') as f:
+                f.write(f"Starting sync loop - {len(wug_devices)} devices to process\n")
+                for device_data in wug_devices:
+                    device_name = device_data.get('name', 'unknown')
+                    device_id = device_data.get('id', 'NO_ID')
+                    device_ip = device_data.get('networkAddress') or device_data.get('ipAddress') or device_data.get('hostName', 'NO_IP')
+                    f.write(f"\n=== Processing device: {device_name} (ID: {device_id}, IP: {device_ip}) ===\n")
+                    f.flush()
+            
             for device_data in wug_devices:
                 device_name = device_data.get('name', 'unknown')
                 logger.info(f"Processing device: {device_name}")
@@ -1016,12 +1026,27 @@ def sync_wug_connection(connection, sync_type: str = 'manual') -> Dict:
                     from .wug_client import normalize_wug_device_data
                     logger.info(f"Normalizing data for device: {device_name}")
                     normalized_device_data = normalize_wug_device_data(device_data)
+                    
+                    # FILE LOGGING
+                    with open('/tmp/wug_sync_debug.log', 'a') as f:
+                        f.write(f"\nNormalized {device_name}:\n")
+                        f.write(f"  name: {normalized_device_data.get('name')}\n")
+                        f.write(f"  ip_address: {normalized_device_data.get('ip_address')}\n")
+                        f.write(f"  id: {normalized_device_data.get('id')}\n")
+                        f.flush()
+                    
                     logger.info(f"Normalized device data: name={normalized_device_data.get('name')}, ip={normalized_device_data.get('ip_address')}, id={normalized_device_data.get('id')}")
                     print(f"DEBUG: Normalized {device_name} - IP: {normalized_device_data.get('ip_address')}, ID: {normalized_device_data.get('id')}")
                     
                     # Sync individual device with normalized data
                     logger.info(f"Calling sync_single_device for: {device_name}")
                     result = sync_single_device(connection, normalized_device_data)
+                    
+                    # FILE LOGGING
+                    with open('/tmp/wug_sync_debug.log', 'a') as f:
+                        f.write(f"Sync result for {device_name}: {result}\n")
+                        f.flush()
+                    
                     logger.info(f"Sync result for {device_name}: {result}")
                     print(f"DEBUG: Sync result for {device_name}: {result}")
                     
