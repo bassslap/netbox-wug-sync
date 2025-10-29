@@ -1287,8 +1287,17 @@ def create_wug_device_from_netbox_data(netbox_device: Device, connection) -> Dic
             elif 'server' in device_type_name:
                 device_type = "Server"
         
-        if netbox_device.device_role:
-            # Use NetBox role name if available
+        if hasattr(netbox_device, 'role') and netbox_device.role:
+            # Use NetBox role name if available (NetBox v4 uses 'role')
+            role_name = netbox_device.role.name.lower()
+            if 'router' in role_name:
+                primary_role = "Router"
+            elif 'switch' in role_name:
+                primary_role = "Switch"
+            elif 'firewall' in role_name:
+                primary_role = "Firewall"
+        elif hasattr(netbox_device, 'device_role') and netbox_device.device_role:
+            # Fallback for older NetBox versions
             role_name = netbox_device.device_role.name.lower()
             if 'router' in role_name:
                 primary_role = "Router"
