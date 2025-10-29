@@ -424,8 +424,8 @@ def trigger_netbox_export_view(request, pk):
         
         logger.info(f"Starting NetBox to WUG export for connection {connection.name} - {devices.count()} candidate devices")
         
-        # Call the sync function
-        result = sync_netbox_to_wug(connection, devices.iterator())
+        # Call the sync function (it will find devices automatically when device_id is None)
+        result = sync_netbox_to_wug(connection)
         
         if result['success']:
             messages.success(request, f"NetBox export completed! {result['message']}")

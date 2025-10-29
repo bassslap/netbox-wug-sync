@@ -1319,10 +1319,16 @@ def create_wug_device_from_netbox_data(netbox_device: Device, connection) -> Dic
         if result.get('success'):
             logger.info(f"Successfully created WUG device: {netbox_device.name} (ID: {result.get('device_id')})")
             
+            # Update connection's last sync timestamp
+            from django.utils import timezone
+            connection.last_sync = timezone.now()
+            connection.save(update_fields=['last_sync'])
+            
             # Store the WUG device ID in NetBox custom field or log it
             # For now, just return the result
             return {
                 'success': True,
+                'device_id': result.get('device_id'),  # Changed from wug_device_id to device_id
                 'wug_device_id': result.get('device_id'),
                 'netbox_device_name': netbox_device.name,
                 'ip_address': primary_ip,
@@ -1411,6 +1417,16 @@ def sync_netbox_to_wug(connection, device_id: int = None) -> Dict:
                 })
         
         logger.info(f"NetBox to WUG sync completed: {results['created']} created, {results['errors']} errors, {results['skipped']} skipped")
+        
+        # Update connection's last sync timestamp
+        from django.utils import timezone
+        connection.last_sync = timezone.now()
+        connection.save(update_fields=['last_sync'])
+        
+        # Add success indicator to results
+        results['success'] = True
+        results['message'] = f"Synced {results['created']} devices with {results['errors']} errors"
+        
         return results
         
     except Exception as e:
