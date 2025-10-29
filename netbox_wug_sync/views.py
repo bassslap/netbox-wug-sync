@@ -410,27 +410,192 @@ def trigger_netbox_export_view(request, pk):
     
     connection = get_object_or_404(WUGConnection, pk=pk)
     
-    if not connection.enable_netbox_export:
-        return JsonResponse({
-            'success': False,
-            'message': 'NetBox export is not enabled for this connection'
-        })
-    
     try:
-        # In a real implementation, this would queue the NetBoxToWUGExportJob
-        # For now, we'll simulate the response
+        # Use the new reverse sync functionality
+        from .sync_utils import sync_netbox_to_wug
+        from dcim.models import Device
+        from dcim.choices import DeviceStatusChoices
         
-        messages.success(request, f'NetBox export initiated for {connection.name}')
+        # Get all active NetBox devices with primary IP addresses
+        devices = Device.objects.filter(
+            status=DeviceStatusChoices.STATUS_ACTIVE,
+            primary_ip4__isnull=False
+        )
         
-        return JsonResponse({
-            'success': True,
-            'message': f'NetBox export initiated for {connection.name}'
-        })
+        logger.info(f"Starting NetBox to WUG export for connection {connection.name} - {devices.count()} candidate devices")
+        
+        # Call the sync function
+        result = sync_netbox_to_wug(connection, devices.iterator())
+        
+        if result['success']:
+            messages.success(request, f"NetBox export completed! {result['message']}")
+            
+            # Create sync log entry
+            WUGSyncLog.objects.create(
+                connection=connection,
+                sync_type='netbox_to_wug',
+                status='completed',
+                start_time=timezone.now(),
+                end_time=timezone.now(),
+                devices_discovered=result.get('total_devices', 0),
+                devices_created=result.get('devices_created', 0),
+                devices_updated=result.get('devices_updated', 0),
+                devices_errors=result.get('devices_failed', 0),
+                summary=f"Manual NetBox export: {result['message']}"
+            )
+            
+            return JsonResponse({
+                'success': True,
+                'message': result['message'],
+                'devices_created': result.get('devices_created', 0),
+                'devices_failed': result.get('devices_failed', 0),
+                'total_devices': result.get('total_devices', 0)
+            })
+        else:
+            messages.error(request, f"NetBox export failed: {result['message']}")
+            
+            # Create error sync log entry
+            WUGSyncLog.objects.create(
+                connection=connection,
+                sync_type='netbox_to_wug',
+                status='failed',
+                start_time=timezone.now(),
+                end_time=timezone.now(),
+                devices_discovered=0,
+                devices_created=0,
+                devices_updated=0,
+                devices_errors=1,
+                summary=f"Manual NetBox export failed: {result['message']}"
+            )
+            
+            return JsonResponse({
+                'success': False,
+                'message': result['message']
+            })
         
     except Exception as e:
+        error_msg = f"Failed to trigger NetBox export: {str(e)}"
+        logger.error(error_msg)
+        messages.error(request, error_msg)
+        
+        # Create error sync log entry
+        WUGSyncLog.objects.create(
+            connection=connection,
+            sync_type='netbox_to_wug',
+            status='error',
+            start_time=timezone.now(),
+            end_time=timezone.now(),
+            devices_discovered=0,
+            devices_created=0,
+            devices_updated=0,
+            devices_errors=1,
+            summary=f"NetBox export exception: {error_msg}"
+        )
+        
         return JsonResponse({
             'success': False,
-            'message': f'Failed to trigger export: {str(e)}'
+            'message': error_msg
+        })
+
+
+def sync_netbox_device_to_wug_view(request, device_id):
+    """Sync a specific NetBox device to all active WUG connections"""
+    
+    if not request.user.has_perm('netbox_wug_sync.change_wugconnection'):
+        raise PermissionDenied
+    
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    
+    try:
+        from dcim.models import Device
+        from .sync_utils import create_wug_device_from_netbox_data
+        
+        device = get_object_or_404(Device, pk=device_id)
+        
+        # Check if device is eligible for sync
+        if not device.primary_ip4:
+            return JsonResponse({
+                'success': False,
+                'message': f'Device {device.name} has no primary IPv4 address'
+            })
+        
+        if device.status != 'active':
+            return JsonResponse({
+                'success': False,
+                'message': f'Device {device.name} is not active (status: {device.status})'
+            })
+        
+        # Get active WUG connections
+        connections = WUGConnection.objects.filter(is_active=True)
+        if not connections.exists():
+            return JsonResponse({
+                'success': False,
+                'message': 'No active WUG connections found'
+            })
+        
+        results = []
+        for connection in connections:
+            try:
+                result = create_wug_device_from_netbox_data(device, connection)
+                results.append({
+                    'connection': connection.name,
+                    'success': result['success'],
+                    'message': result.get('error' if not result['success'] else 'message', ''),
+                    'device_id': result.get('device_id')
+                })
+                
+                if result['success']:
+                    logger.info(f"Successfully synced device {device.name} to WUG connection {connection.name} (Device ID: {result.get('device_id')})")
+                else:
+                    logger.error(f"Failed to sync device {device.name} to WUG connection {connection.name}: {result.get('error')}")
+            
+            except Exception as e:
+                error_msg = f"Exception syncing to {connection.name}: {str(e)}"
+                logger.error(error_msg)
+                results.append({
+                    'connection': connection.name,
+                    'success': False,
+                    'message': error_msg,
+                    'device_id': None
+                })
+        
+        # Check overall success
+        successful_syncs = [r for r in results if r['success']]
+        failed_syncs = [r for r in results if not r['success']]
+        
+        if successful_syncs:
+            success_msg = f"Device {device.name} synced to {len(successful_syncs)} WUG connection(s)"
+            if failed_syncs:
+                success_msg += f" ({len(failed_syncs)} failed)"
+            
+            messages.success(request, success_msg)
+            
+            return JsonResponse({
+                'success': True,
+                'message': success_msg,
+                'results': results,
+                'successful_connections': len(successful_syncs),
+                'failed_connections': len(failed_syncs)
+            })
+        else:
+            error_msg = f"Failed to sync device {device.name} to any WUG connections"
+            messages.error(request, error_msg)
+            
+            return JsonResponse({
+                'success': False,
+                'message': error_msg,
+                'results': results
+            })
+        
+    except Exception as e:
+        error_msg = f"Error syncing NetBox device: {str(e)}"
+        logger.error(error_msg)
+        messages.error(request, error_msg)
+        
+        return JsonResponse({
+            'success': False,
+            'message': error_msg
         })
 
 

@@ -44,4 +44,11 @@ urlpatterns = [
     # Sync Logs
     path('logs/', views.WUGSyncLogListView.as_view(), name='wugsynclog_list'),
     path('logs/<int:pk>/', views.WUGSyncLogDetailView.as_view(), name='wugsynclog'),
+    
+    # NetBox to WUG Export
+    path('connections/<int:pk>/export/', views.trigger_netbox_export_view, name='wugconnection_export'),
+    path('connections/<int:pk>/export-status/', views.netbox_export_status_view, name='wugconnection_export_status'),
+    
+    # Individual device sync
+    path('netbox-device/<int:device_id>/sync/', views.sync_netbox_device_to_wug_view, name='netbox_device_sync'),
 ]

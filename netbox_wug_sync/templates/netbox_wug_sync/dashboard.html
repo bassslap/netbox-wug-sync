@@ -209,8 +209,13 @@
                                             </button>
                                             <button class="btn btn-sm btn-outline-success" 
                                                     onclick="triggerSync({{ connection.pk }})"
-                                                    title="Trigger Sync">
+                                                    title="Sync WUG to NetBox">
                                                 <i class="mdi mdi-sync"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-warning" 
+                                                    onclick="triggerNetBoxExport({{ connection.pk }})"
+                                                    title="Export NetBox to WUG">
+                                                <i class="mdi mdi-export"></i>
                                             </button>
                                             <a href="{% url 'plugins:netbox_wug_sync:wugconnection_edit' pk=connection.pk %}" 
                                                class="btn btn-sm btn-outline-secondary"
@@ -506,6 +511,80 @@ function triggerSync(connectionId) {
             alertDiv.innerHTML = `
                 <i class="mdi mdi-alert-circle me-2"></i>
                 Error triggering sync: ${error.message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            button.closest('.card-body').insertBefore(alertDiv, button.closest('.card-body').firstChild);
+            
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.remove();
+                }
+            }, 8000);
+        });
+    }
+}
+
+function triggerNetBoxExport(connectionId) {
+    if (confirm('Are you sure you want to export NetBox devices to WhatsUp Gold? This will create devices in WUG for all active NetBox devices with primary IP addresses.')) {
+        const button = event.target;
+        const originalHtml = button.innerHTML;
+        
+        showLoading(button, 'Exporting...');
+        
+        fetch(`/plugins/wug-sync/connections/${connectionId}/export/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            button.innerHTML = originalHtml;
+            button.disabled = false;
+            
+            if (data.success) {
+                const alertDiv = document.createElement('div');
+                alertDiv.className = 'alert alert-success alert-dismissible fade show mt-2';
+                alertDiv.innerHTML = `
+                    <i class="mdi mdi-check-circle me-2"></i>
+                    <strong>NetBox Export Completed!</strong><br>
+                    ${data.message}<br>
+                    <small>Created: ${data.devices_created || 0} devices | Failed: ${data.devices_failed || 0} devices | Total: ${data.total_devices || 0} devices</small>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+                button.closest('.card-body').insertBefore(alertDiv, button.closest('.card-body').firstChild);
+                
+                // Refresh page after 3 seconds
+                setTimeout(() => {
+                    location.reload();
+                }, 3000);
+            } else {
+                const alertDiv = document.createElement('div');
+                alertDiv.className = 'alert alert-danger alert-dismissible fade show mt-2';
+                alertDiv.innerHTML = `
+                    <i class="mdi mdi-alert-circle me-2"></i>
+                    NetBox export failed: ${data.message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+                button.closest('.card-body').insertBefore(alertDiv, button.closest('.card-body').firstChild);
+                
+                setTimeout(() => {
+                    if (alertDiv.parentNode) {
+                        alertDiv.remove();
+                    }
+                }, 8000);
+            }
+        })
+        .catch(error => {
+            button.innerHTML = originalHtml;
+            button.disabled = false;
+            
+            const alertDiv = document.createElement('div');
+            alertDiv.className = 'alert alert-danger alert-dismissible fade show mt-2';
+            alertDiv.innerHTML = `
+                <i class="mdi mdi-alert-circle me-2"></i>
+                Error triggering NetBox export: ${error.message}
                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             `;
             button.closest('.card-body').insertBefore(alertDiv, button.closest('.card-body').firstChild);

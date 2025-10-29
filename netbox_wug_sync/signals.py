@@ -15,6 +15,7 @@ from ipam.models import IPAddress
 
 from .models import WUGConnection, WUGDevice, WUGSyncLog
 from .wug_client import WUGAPIClient
+from .sync_utils import create_wug_device_from_netbox_data
 
 logger = logging.getLogger(__name__)
 
@@ -51,9 +52,58 @@ def device_saved_handler(sender, instance, created, **kwargs):
     # Sync to all active WUG connections
     for connection in connections:
         try:
-            sync_device_to_wug(instance, connection, primary_ip, created)
+            # Use the new reverse sync functionality
+            result = create_wug_device_from_netbox_data(instance, connection)
+            
+            if result['success']:
+                logger.info(f"Successfully synced device {instance.name} to WUG connection {connection.name} (Device ID: {result.get('device_id', 'unknown')})")
+                
+                # Create sync log entry
+                WUGSyncLog.objects.create(
+                    connection=connection,
+                    sync_type='netbox_to_wug',
+                    status='completed',
+                    start_time=timezone.now(),
+                    end_time=timezone.now(),
+                    devices_discovered=1,
+                    devices_created=1 if created else 0,
+                    devices_updated=0 if created else 1,
+                    devices_errors=0,
+                    summary=f"NetBox device {instance.name} {'created' if created else 'updated'} in WUG via signal - Device ID: {result.get('device_id', 'unknown')}"
+                )
+            else:
+                error_msg = result.get('error', 'Unknown error')
+                logger.error(f"Failed to sync device {instance.name} to WUG connection {connection.name}: {error_msg}")
+                
+                # Create error sync log entry
+                WUGSyncLog.objects.create(
+                    connection=connection,
+                    sync_type='netbox_to_wug',
+                    status='failed',
+                    start_time=timezone.now(),
+                    end_time=timezone.now(),
+                    devices_discovered=1,
+                    devices_created=0,
+                    devices_updated=0,
+                    devices_errors=1,
+                    summary=f"Failed to sync NetBox device {instance.name} to WUG: {error_msg}"
+                )
         except Exception as e:
             logger.error(f"Failed to sync device {instance.name} to WUG connection {connection.name}: {str(e)}")
+            
+            # Create error sync log entry
+            WUGSyncLog.objects.create(
+                connection=connection,
+                sync_type='netbox_to_wug',
+                status='error',
+                start_time=timezone.now(),
+                end_time=timezone.now(),
+                devices_discovered=1,
+                devices_created=0,
+                devices_updated=0,
+                devices_errors=1,
+                summary=f"Exception while syncing NetBox device {instance.name} to WUG: {str(e)}"
+            )
 
 
 @receiver(post_delete, sender=Device)
@@ -77,156 +127,6 @@ def device_deleted_handler(sender, instance, **kwargs):
             remove_device_from_wug(wug_device)
         except Exception as e:
             logger.error(f"Failed to remove device {instance.name} from WUG: {str(e)}")
-
-
-def sync_device_to_wug(netbox_device, wug_connection, ip_address, is_new_device=True):
-    """
-    Sync a NetBox device to WhatsUp Gold
-    
-    Args:
-        netbox_device: NetBox Device instance
-        wug_connection: WUGConnection instance
-        ip_address: Primary IP address of the device
-        is_new_device: Whether this is a new device creation
-    """
-    # Check if device already exists in WUG for this connection
-    existing_wug_device = WUGDevice.objects.filter(
-        connection=wug_connection,
-        netbox_device_id=netbox_device.id
-    ).first()
-    
-    if existing_wug_device and not is_new_device:
-        logger.debug(f"Device {netbox_device.name} already exists in WUG connection {wug_connection.name}, updating")
-        action = "update"
-    else:
-        logger.info(f"Adding new device {netbox_device.name} to WUG connection {wug_connection.name}")
-        action = "create"
-    
-    # Prepare device data for WUG
-    device_data = {
-        'ipAddress': ip_address,
-        'displayName': netbox_device.name,
-        'description': f"Device synced from NetBox - {netbox_device.device_type.model if netbox_device.device_type else 'Unknown'}",
-        'location': netbox_device.site.name if netbox_device.site else 'Unknown',
-        'contact': netbox_device.comments or '',
-        'community': 'public',  # Default SNMP community
-        'snmpVersion': '2c',    # Default SNMP version
-        'enableMonitoring': True
-    }
-    
-    # Add additional metadata
-    if netbox_device.role:
-        device_data['role'] = netbox_device.role.name
-    
-    if netbox_device.platform:
-        device_data['platform'] = netbox_device.platform.name
-    
-    try:
-        # Create WUG API client
-        with WUGAPIClient(
-            host=wug_connection.host,
-            username=wug_connection.username,
-            password=wug_connection.password,  # Fix: Use password field directly
-            port=wug_connection.port,
-            use_ssl=wug_connection.use_ssl,
-            verify_ssl=wug_connection.verify_ssl
-        ) as client:
-            
-            # Add device to WUG
-            result = client.add_device_by_ip(ip_address, device_data)
-            
-            if result.get('success', False):
-                wug_device_id = result.get('deviceId') or result.get('id')
-                
-                # Create or update WUGDevice record
-                if existing_wug_device:
-                    existing_wug_device.wug_device_id = wug_device_id
-                    existing_wug_device.last_sync = timezone.now()
-                    existing_wug_device.sync_status = 'success'
-                    existing_wug_device.save()
-                    wug_device = existing_wug_device
-                else:
-                    wug_device = WUGDevice.objects.create(
-                        connection=wug_connection,
-                        wug_device_id=wug_device_id,
-                        netbox_device_id=netbox_device.id,
-                        device_name=netbox_device.name,
-                        ip_address=ip_address,
-                        sync_status='success'
-                    )
-                
-                logger.info(f"Successfully {action}d device {netbox_device.name} in WUG (ID: {wug_device_id})")
-                
-                # Trigger scan for the newly added device
-                if action == "create":
-                    logger.info(f"Triggering scan for newly added device {netbox_device.name} at {ip_address}")
-                    try:
-                        scan_result = client.scan_ip_address(ip_address)
-                        if scan_result.get('success', False):
-                            logger.info(f"Successfully triggered scan for device {netbox_device.name}")
-                            
-                            # Check for IP conflicts during the scan
-                            check_ip_conflicts_after_scan(ip_address, netbox_device, wug_connection, client)
-                        else:
-                            scan_error = scan_result.get('message', 'Unknown scan error')
-                            logger.warning(f"Failed to trigger scan for device {netbox_device.name}: {scan_error}")
-                    except Exception as scan_e:
-                        logger.warning(f"Exception while scanning device {netbox_device.name}: {str(scan_e)}")
-                
-                # Create sync log entry
-                WUGSyncLog.objects.create(
-                    connection=wug_connection,
-                    sync_type='netbox_to_wug',
-                    status='completed',
-                    start_time=timezone.now(),
-                    end_time=timezone.now(),
-                    devices_discovered=1,
-                    devices_created=1 if action == "create" else 0,
-                    devices_updated=1 if action == "update" else 0,
-                    devices_errors=0,
-                    summary=f"NetBox device {netbox_device.name} {action}d in WUG via signal"
-                )
-                
-            else:
-                error_msg = result.get('message', 'Unknown error')
-                logger.error(f"Failed to {action} device {netbox_device.name} in WUG: {error_msg}")
-                
-                # Update existing record or create failed record
-                if existing_wug_device:
-                    existing_wug_device.sync_status = 'failed'
-                    existing_wug_device.error_message = error_msg
-                    existing_wug_device.save()
-                
-                # Create error sync log entry
-                WUGSyncLog.objects.create(
-                    connection=wug_connection,
-                    sync_type='netbox_to_wug',
-                    status='failed',
-                    start_time=timezone.now(),
-                    end_time=timezone.now(),
-                    devices_discovered=1,
-                    devices_created=0,
-                    devices_updated=0,
-                    devices_errors=1,
-                    summary=f"Failed to {action} NetBox device {netbox_device.name} in WUG: {error_msg}"
-                )
-                
-    except Exception as e:
-        logger.error(f"Exception while syncing device {netbox_device.name} to WUG: {str(e)}")
-        
-        # Create error sync log entry
-        WUGSyncLog.objects.create(
-            connection=wug_connection,
-            sync_type='netbox_to_wug',
-            status='error',
-            start_time=timezone.now(),
-            end_time=timezone.now(),
-            devices_discovered=1,
-            devices_created=0,
-            devices_updated=0,
-            devices_errors=1,
-            summary=f"Exception while syncing NetBox device {netbox_device.name} to WUG: {str(e)}"
-        )
 
 
 def remove_device_from_wug(wug_device):
