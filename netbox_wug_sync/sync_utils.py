@@ -1082,23 +1082,40 @@ def sync_wug_connection(connection, sync_type: str = 'manual') -> Dict:
                     logger.error(f"Traceback: {traceback.format_exc()}")
                     print(f"DEBUG TRACEBACK: {traceback.format_exc()}")
             
-            # Update final sync log
-            sync_log.status = 'completed' if errors == 0 else 'failed'
-            sync_log.end_time = datetime.now()
+            # Update final sync log with improved success/failure logic
+            total_attempts = devices_synced + errors
+            success_rate = (devices_synced / total_attempts * 100) if total_attempts > 0 else 0
+            
+            # Determine status based on success rate and results
             if errors == 0:
+                sync_log.status = 'completed'
                 sync_log.summary = f"Successfully synced {devices_synced} devices"
+            elif success_rate >= 50 and devices_synced > 0:
+                # Sync succeeded with some errors (partial success)
+                sync_log.status = 'completed'
+                sync_log.summary = f"Synced {devices_synced} devices with {errors} errors ({success_rate:.1f}% success rate)"
             else:
-                sync_log.summary = f"Synced {devices_synced} devices with {errors} errors"
+                # Sync failed (high error rate or no successes)
+                sync_log.status = 'failed'
+                sync_log.summary = f"Sync failed: {devices_synced} devices synced, {errors} errors ({success_rate:.1f}% success rate)"
+            
+            sync_log.end_time = datetime.now()
             sync_log.save()
             
             logger.info(f"Sync completed for {connection.name}: {devices_synced} devices synced, {errors} errors")
             
+            # Return success based on the same logic used for sync_log.status
+            total_attempts = devices_synced + errors
+            success_rate = (devices_synced / total_attempts * 100) if total_attempts > 0 else 0
+            sync_successful = (errors == 0) or (success_rate >= 50 and devices_synced > 0)
+            
             return {
-                'success': True,
+                'success': sync_successful,
                 'devices_synced': devices_synced,
                 'errors': errors,
                 'devices_discovered': devices_discovered,
-                'message': f"Sync completed: {devices_synced} devices synced"
+                'success_rate': success_rate,
+                'message': sync_log.summary
             }
             
     except Exception as e:
