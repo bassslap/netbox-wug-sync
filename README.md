@@ -4,21 +4,26 @@ A NetBox plugin for synchronizing network devices between NetBox and WhatsUp Gol
 
 ## Overview
 
-This plugin provides automated bidirectional synchronization between NetBox and WhatsUp Gold, allowing you to:
+This plugin provides automated **bidirectional synchronization** between NetBox and WhatsUp Gold, allowing you to:
 
-- Import devices discovered in WhatsUp Gold into NetBox
+- **Import devices** discovered in WhatsUp Gold into NetBox
+- **Export devices** from NetBox to WhatsUp Gold for monitoring
 - Keep device information synchronized between both systems
 - Monitor sync status and troubleshoot sync issues
 - Manage multiple WhatsUp Gold connections
 - Automatically create NetBox sites, device types, and manufacturers from WUG data
+- Automatically add NetBox devices to WUG when they are created with active status and IP addresses
 
 ## Features
 
 ### Core Functionality
-- **Device Synchronization**: Automatic sync of devices from WhatsUp Gold to NetBox
+- **Bidirectional Device Sync**: 
+  - **WUG-to-NetBox**: Import devices from WhatsUp Gold to NetBox
+  - **NetBox-to-WUG**: Export NetBox devices to WhatsUp Gold for monitoring
+- **Automatic Sync**: Django signals automatically sync new NetBox devices to WUG
+- **Manual Sync**: On-demand synchronization via web UI or API
 - **Multiple Connections**: Support for multiple WhatsUp Gold servers
 - **Scheduled Sync**: Configurable automatic sync intervals
-- **Manual Sync**: On-demand synchronization via web UI or API
 - **Selective Sync**: Enable/disable sync for individual devices
 
 ### Data Management
@@ -88,6 +93,13 @@ PLUGINS_CONFIG = {
         'default_device_status': 'active',
         'sync_device_tags': True,
         'debug_mode': False,
+        
+        # NetBox-to-WUG reverse sync settings
+        'enable_automatic_export': True,    # Enable Django signals for auto-sync
+        'export_only_active_devices': True, # Only sync devices with active status
+        'require_primary_ip': True,         # Only sync devices with primary IP
+        'wug_device_template': 'Network Device', # Default WUG device template
+        'export_device_comments': True,     # Include NetBox comments in WUG description
     }
 }
 ```
@@ -197,6 +209,86 @@ curl -H "Authorization: Token YOUR_TOKEN" \\
   http://netbox.example.com/api/plugins/wug-sync/status/
 ```
 
+### NetBox-to-WUG Reverse Sync
+
+The plugin now supports **reverse synchronization** from NetBox to WhatsUp Gold, automatically adding NetBox devices to WUG for monitoring.
+
+#### Automatic Sync (Django Signals)
+
+When you create or update a NetBox device with the following criteria, it will **automatically** be added to all active WUG connections:
+
+- **Device Status**: Active
+- **Primary IP**: Must have a primary IPv4 address
+- **Active Connections**: At least one WUG connection must be active
+
+**Example**: Creating a device that triggers automatic sync:
+
+```python
+from dcim.models import Device, Site, DeviceType, DeviceRole
+from dcim.choices import DeviceStatusChoices
+from ipam.models import IPAddress
+
+# Create device with active status and primary IP
+device = Device.objects.create(
+    name='router-01',
+    site=my_site,
+    device_type=my_device_type,
+    role=my_role,
+    status=DeviceStatusChoices.STATUS_ACTIVE,
+    primary_ip4=my_ip_address  # This triggers automatic WUG sync!
+)
+```
+
+#### Manual Sync (UI Controls)
+
+**Dashboard Export Button**: 
+- Navigate to **Plugins > WhatsUp Gold Sync**
+- Click the **orange Export button** (📤) next to any WUG connection
+- This exports all active NetBox devices with primary IPs to that WUG server
+
+**Individual Device Sync**:
+- Use the REST API endpoint: `/api/plugins/wug-sync/netbox-device/{device_id}/sync/`
+- Sync specific NetBox devices to all active WUG connections
+
+#### API Endpoints for Reverse Sync
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/plugins/wug-sync/connections/{id}/export/` | POST | Export all NetBox devices to WUG |
+| `/api/plugins/wug-sync/netbox-device/{device_id}/sync/` | POST | Sync specific NetBox device |
+| `/api/plugins/wug-sync/connections/{id}/export-status/` | GET | Check export status |
+
+**Example API Usage**:
+
+```bash
+# Export all NetBox devices to WUG
+curl -X POST -H "Authorization: Token YOUR_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  http://netbox.example.com/api/plugins/wug-sync/connections/1/export/
+
+# Sync specific NetBox device to all WUG connections
+curl -X POST -H "Authorization: Token YOUR_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  http://netbox.example.com/api/plugins/wug-sync/netbox-device/123/sync/
+```
+
+#### WUG Device Creation Process
+
+When syncing from NetBox to WUG, the plugin:
+
+1. **Validates Device**: Checks for active status and primary IP
+2. **Creates WUG Device**: Uses PATCH `/api/v1/devices/-/config/template` endpoint
+3. **Maps Data**: Converts NetBox attributes to WUG device properties
+4. **Logs Results**: Creates sync log entries for tracking
+5. **Handles Errors**: Comprehensive error handling and reporting
+
+**Device Mapping**:
+- **IP Address**: Primary IPv4 address from NetBox
+- **Display Name**: NetBox device name
+- **Description**: Device type and model information
+- **Location**: NetBox site name
+- **Device Type**: Mapped to WUG device templates
+
 ### Automation
 
 #### Scheduled Sync
@@ -232,6 +324,19 @@ result = job.run(connection_id=connection.id, sync_type='manual')
 | OS Version | Custom field | Operating system information |
 | Group/Location | Site.name | Auto-created from WUG groups |
 | Status | Device.status | Mapped to NetBox status choices |
+
+### NetBox to WUG Field Mapping
+
+| NetBox Field | WhatsUp Gold Field | Notes |
+|--------------|-------------------|-------|
+| Device.name | Display Name | Primary device identifier |
+| Device.primary_ip4 | IP Address | Primary monitoring IP |
+| Device.device_type.model | Description | Device model information |
+| Device.site.name | Location | Physical location/site |
+| Device.role.name | Device Type | Functional device role |
+| Device.platform.name | Platform | Operating system/platform |
+| Device.comments | Contact | Additional device notes |
+| Device.status | Status | Mapped to WUG status |
 
 ### Status Mapping
 
