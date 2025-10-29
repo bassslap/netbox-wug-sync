@@ -1230,3 +1230,184 @@ def sync_single_device(connection, device_data: Dict) -> Dict:
             'success': False,
             'error': error_msg
         }
+
+
+def create_wug_device_from_netbox_data(netbox_device: Device, connection) -> Dict:
+    """
+    Create a new device in WhatsUp Gold based on NetBox device data
+    
+    Args:
+        netbox_device: NetBox Device instance
+        connection: WUGConnection instance
+        
+    Returns:
+        Dictionary with creation result
+    """
+    from .wug_client import WUGAPIClient
+    
+    try:
+        logger.info(f"Creating WUG device from NetBox device: {netbox_device.name}")
+        
+        # Get primary IP address
+        primary_ip = None
+        if netbox_device.primary_ip4:
+            primary_ip = str(netbox_device.primary_ip4.address).split('/')[0]
+        elif netbox_device.primary_ip6:
+            primary_ip = str(netbox_device.primary_ip6.address).split('/')[0]
+        
+        if not primary_ip:
+            return {
+                'success': False,
+                'error': f'NetBox device {netbox_device.name} has no primary IP address'
+            }
+        
+        # Create WUG API client
+        client = WUGAPIClient(
+            host=connection.host,
+            username=connection.username,
+            password=connection.password,
+            port=connection.port,
+            use_ssl=connection.use_ssl,
+            verify_ssl=connection.verify_ssl
+        )
+        
+        # Determine device type and role
+        device_type = "Network Device"  # Default
+        primary_role = "Device"  # Default
+        
+        if netbox_device.device_type:
+            # Map common NetBox device types to WUG types
+            device_type_name = netbox_device.device_type.model.lower()
+            if 'router' in device_type_name:
+                primary_role = "Router"
+            elif 'switch' in device_type_name:
+                primary_role = "Switch"
+            elif 'firewall' in device_type_name:
+                primary_role = "Firewall"
+            elif 'server' in device_type_name:
+                device_type = "Server"
+        
+        if netbox_device.device_role:
+            # Use NetBox role name if available
+            role_name = netbox_device.device_role.name.lower()
+            if 'router' in role_name:
+                primary_role = "Router"
+            elif 'switch' in role_name:
+                primary_role = "Switch"
+            elif 'firewall' in role_name:
+                primary_role = "Firewall"
+        
+        # Create device in WUG
+        result = client.create_device(
+            display_name=netbox_device.name,
+            ip_address=primary_ip,
+            hostname=netbox_device.name,
+            device_type=device_type,
+            primary_role=primary_role,
+            poll_interval=60  # Default polling interval
+        )
+        
+        if result.get('success'):
+            logger.info(f"Successfully created WUG device: {netbox_device.name} (ID: {result.get('device_id')})")
+            
+            # Store the WUG device ID in NetBox custom field or log it
+            # For now, just return the result
+            return {
+                'success': True,
+                'wug_device_id': result.get('device_id'),
+                'netbox_device_name': netbox_device.name,
+                'ip_address': primary_ip,
+                'message': f"Created WUG device ID {result.get('device_id')} for NetBox device {netbox_device.name}"
+            }
+        else:
+            error_msg = result.get('message', 'Unknown error creating WUG device')
+            logger.error(f"Failed to create WUG device for {netbox_device.name}: {error_msg}")
+            return {
+                'success': False,
+                'error': error_msg
+            }
+            
+    except Exception as e:
+        error_msg = f"Exception creating WUG device for {netbox_device.name}: {str(e)}"
+        logger.error(error_msg)
+        return {
+            'success': False,
+            'error': error_msg
+        }
+
+
+def sync_netbox_to_wug(connection, device_id: int = None) -> Dict:
+    """
+    Sync NetBox devices to WhatsUp Gold (reverse sync)
+    
+    Args:
+        connection: WUGConnection instance
+        device_id: Optional specific NetBox device ID to sync
+        
+    Returns:
+        Dictionary with sync results
+    """
+    try:
+        logger.info("Starting NetBox to WUG sync")
+        
+        # Get devices to sync
+        if device_id:
+            devices = Device.objects.filter(id=device_id, status=DeviceStatusChoices.STATUS_ACTIVE)
+        else:
+            # Get all active devices with primary IP addresses
+            devices = Device.objects.filter(
+                status=DeviceStatusChoices.STATUS_ACTIVE
+            ).exclude(
+                primary_ip4__isnull=True, primary_ip6__isnull=True
+            )
+        
+        results = {
+            'total_devices': devices.count(),
+            'created': 0,
+            'errors': 0,
+            'skipped': 0,
+            'device_results': []
+        }
+        
+        logger.info(f"Found {results['total_devices']} NetBox devices to sync")
+        
+        for device in devices:
+            # Check if device has primary IP
+            if not device.primary_ip4 and not device.primary_ip6:
+                results['skipped'] += 1
+                results['device_results'].append({
+                    'device_name': device.name,
+                    'status': 'skipped',
+                    'reason': 'No primary IP address'
+                })
+                continue
+            
+            # Create device in WUG
+            result = create_wug_device_from_netbox_data(device, connection)
+            
+            if result.get('success'):
+                results['created'] += 1
+                results['device_results'].append({
+                    'device_name': device.name,
+                    'status': 'created',
+                    'wug_device_id': result.get('wug_device_id'),
+                    'ip_address': result.get('ip_address')
+                })
+            else:
+                results['errors'] += 1
+                results['device_results'].append({
+                    'device_name': device.name,
+                    'status': 'error',
+                    'error': result.get('error')
+                })
+        
+        logger.info(f"NetBox to WUG sync completed: {results['created']} created, {results['errors']} errors, {results['skipped']} skipped")
+        return results
+        
+    except Exception as e:
+        error_msg = f"Exception in NetBox to WUG sync: {str(e)}"
+        logger.error(error_msg)
+        return {
+            'success': False,
+            'error': error_msg
+        }

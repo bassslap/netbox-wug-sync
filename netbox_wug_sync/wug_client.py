@@ -1168,3 +1168,116 @@ def create_netbox_device_data(wug_device: Dict, site_id: int = None,
         netbox_data['custom_fields'] = custom_fields
     
     return netbox_data
+
+
+def create_device(self, display_name: str, ip_address: str, hostname: str = None, 
+                 device_type: str = "Network Device", primary_role: str = "Device",
+                 poll_interval: int = 60) -> Dict:
+    """
+    Create a new device in WhatsUp Gold
+    
+    Args:
+        display_name: Display name for the device
+        ip_address: IP address of the device
+        hostname: Hostname (optional, defaults to display_name)
+        device_type: Device type (optional)
+        primary_role: Primary role (optional)
+        poll_interval: Polling interval in seconds (optional)
+        
+    Returns:
+        Dictionary with creation result including device ID
+        
+    Raises:
+        WUGAPIException: For API errors
+    """
+    try:
+        logger.info(f"Creating device '{display_name}' with IP {ip_address}")
+        
+        # Use display_name as hostname if not provided
+        if hostname is None:
+            hostname = display_name
+        
+        # Create device template
+        device_template = {
+            "displayName": display_name,
+            "deviceType": device_type,
+            "primaryRole": primary_role,
+            "pollIntervalSeconds": poll_interval,
+            "interfaces": [
+                {
+                    "defaultInterface": True,
+                    "pollUsingNetworkName": False,
+                    "networkAddress": ip_address,
+                    "networkName": hostname
+                }
+            ],
+            "attributes": [],
+            "customLinks": [],
+            "activeMonitors": [
+                {
+                    "classId": "",
+                    "Name": "Ping"
+                }
+            ],
+            "performanceMonitors": [],
+            "passiveMonitors": [],
+            "dependencies": [],
+            "ncmTasks": [],
+            "applicationProfiles": [],
+            "layer2Data": "",
+            "groups": []
+        }
+        
+        # Create request body with correct structure
+        body = {
+            "options": ["all"],
+            "templates": [device_template]
+        }
+        
+        # Make PATCH request to create device
+        response = self._make_request('PATCH', '/devices/-/config/template', data=body)
+        
+        if response and 'data' in response:
+            data = response['data']
+            
+            # Check for errors
+            if 'errors' in data and data['errors']:
+                errors = data['errors']
+                logger.warning(f"Device creation had warnings: {errors}")
+            
+            # Get device ID from response
+            if 'idMap' in data and data['idMap']:
+                device_id = data['idMap'][0].get('resultId')
+                template_id = data['idMap'][0].get('templateId')
+                
+                logger.info(f"Successfully created device '{display_name}' with ID {device_id}")
+                
+                return {
+                    'success': True,
+                    'device_id': device_id,
+                    'template_id': template_id,
+                    'display_name': display_name,
+                    'ip_address': ip_address,
+                    'hostname': hostname,
+                    'errors': data.get('errors', [])
+                }
+            else:
+                logger.error(f"Device creation response missing device ID: {data}")
+                return {
+                    'success': False,
+                    'message': 'Device creation response missing device ID',
+                    'response_data': data
+                }
+        else:
+            logger.error(f"Invalid device creation response: {response}")
+            return {
+                'success': False,
+                'message': 'Invalid API response format'
+            }
+            
+    except Exception as e:
+        logger.error(f"Failed to create device '{display_name}': {e}")
+        return {
+            'success': False,
+            'message': f'Device creation failed: {str(e)}'
+        }
