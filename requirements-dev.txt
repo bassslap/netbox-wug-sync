@@ -1,0 +1,42 @@
+# Development and Testing Dependencies
+# These packages are needed for development, testing, and CI/CD
+
+# Testing framework
+pytest>=7.0.0
+pytest-django>=4.5.0
+pytest-cov>=4.0.0
+pytest-mock>=3.10.0
+
+# Code quality and formatting
+black>=23.0.0
+isort>=5.12.0
+flake8>=6.0.0
+pylint>=2.17.0
+
+# Security scanning
+bandit>=1.7.0
+safety>=2.3.0
+
+# Documentation
+sphinx>=5.0.0
+sphinx-rtd-theme>=1.2.0
+
+# Development utilities
+django-extensions>=3.2.0
+ipython>=8.0.0
+
+# Testing utilities for mocking HTTP requests
+responses>=0.23.0
+requests-mock>=1.10.0
+
+# Coverage reporting
+coverage>=7.0.0
+codecov>=2.1.0
+
+# Type checking
+mypy>=1.0.0
+django-stubs>=4.2.0
+
+# Additional testing utilities
+factory-boy>=3.2.0
+faker>=18.0.0

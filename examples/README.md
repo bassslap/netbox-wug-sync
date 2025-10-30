@@ -2,6 +2,11 @@
 
 This directory contains examples and documentation for deploying the netbox-wug-sync plugin with Docker.
 
+## Files in this Directory
+
+- **`docker/`** - Docker deployment examples and build scripts
+- **`configuration.py`** - Complete NetBox configuration example with plugin settings
+
 ## Quick Start
 
 The easiest way to deploy NetBox with the WUG sync plugin is using Docker Compose with a custom image.
@@ -134,6 +139,30 @@ services:
       timeout: 10s
       retries: 3
 ```
+
+## Configuration Example
+
+### `configuration.py`
+A complete NetBox configuration file example that includes the WUG sync plugin configuration. This can be used as a reference for configuring your NetBox instance.
+
+**Key plugin settings:**
+```python
+PLUGINS = ['netbox_wug_sync']
+
+PLUGINS_CONFIG = {
+    'netbox_wug_sync': {
+        'debug': False,
+        'sync_interval': 3600,  # Default sync interval in seconds
+        'max_retries': 3,       # Maximum retry attempts for failed syncs
+        'timeout': 30,          # Request timeout in seconds
+    }
+}
+```
+
+**Usage:**
+- Copy relevant sections to your NetBox `configuration.py`
+- Adjust settings according to your environment
+- Ensure all required settings are properly configured
 
 ## Development
 

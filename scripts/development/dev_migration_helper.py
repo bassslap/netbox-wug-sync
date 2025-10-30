@@ -3,7 +3,7 @@
 Development helper script for creating NetBox plugin migrations.
 
 Usage:
-    python3 dev_migration_helper.py
+    python3 scripts/development/dev_migration_helper.py
 
 This script helps generate migrations when you make changes to your plugin models.
 """

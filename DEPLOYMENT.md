@@ -175,11 +175,22 @@ python manage.py shell -c "import netbox_wug_sync; print('Plugin loaded successf
 - You should see the WhatsUp Gold Sync Dashboard
 - Verify the WhatsUp Gold logo displays correctly
 
-### 3. Test API Connectivity
+### 3. Run Installation Verification Script
+```bash
+# Comprehensive plugin verification
+python scripts/verify_installation.py
+```
+This script provides detailed verification including:
+- Plugin import and Django app registration
+- Database table validation
+- Static files availability
+- Configuration checks
+
+### 4. Test API Connectivity
 - Go to WUG Connections and click "Test Connection"
 - Should return successful connection status
 
-### 4. Verify Static Files
+### 5. Verify Static Files
 ```bash
 # Check that SVG logo is accessible
 curl -I http://your-netbox-url/static/netbox_wug_sync/img/wug-logo.svg

@@ -31,7 +31,7 @@
 2. **Create Migration:**
    ```bash
    # Use the helper script or create manually
-   python3 dev_migration_helper.py
+   python3 scripts/development/dev_migration_helper.py
    
    # Or create a simple migration manually:
    # 1. Copy the last migration file
