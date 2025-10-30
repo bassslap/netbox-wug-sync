@@ -8,7 +8,7 @@
 
 A NetBox plugin for synchronizing network devices between NetBox and WhatsUp Gold monitoring systems.
 
-## 🚀 Quick Start
+## Quick Start
 
 **New to this plugin?** See the [**Complete Deployment Guide**](DEPLOYMENT.md) for step-by-step installation instructions.
 
