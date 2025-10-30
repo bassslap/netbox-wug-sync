@@ -1,5 +1,7 @@
 from netbox.plugins import PluginConfig
 
+__version__ = '0.1.0'
+
 
 class WUGSyncConfig(PluginConfig):
     name = 'netbox_wug_sync'
