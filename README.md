@@ -118,6 +118,31 @@ python manage.py migrate netbox-wug-sync
 sudo systemctl restart netbox netbox-rq
 ```
 
+## Docker Installation
+
+For Docker deployments, see the complete examples and documentation in the [`examples/`](examples/) directory.
+
+### Quick Docker Setup
+
+1. **Build custom NetBox image with plugin:**
+   ```bash
+   cd examples/docker
+   ./build.sh
+   ```
+
+2. **Use the docker-compose override:**
+   ```bash
+   cp examples/docker/docker-compose.override.yml /path/to/your/netbox/
+   docker-compose up -d
+   ```
+
+3. **Run migrations:**
+   ```bash
+   docker exec netbox python manage.py migrate netbox_wug_sync
+   ```
+
+For detailed Docker configuration options, troubleshooting, and production deployment guidance, see [examples/README.md](examples/README.md).
+
 ## Configuration
 
 ### WhatsUp Gold Connection Setup

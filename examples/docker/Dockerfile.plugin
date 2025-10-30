@@ -1,0 +1,20 @@
+# Example Dockerfile for building NetBox with netbox-wug-sync plugin
+# This extends the official NetBox Docker image and adds the plugin
+
+ARG NETBOX_VERSION=v4.4.5
+FROM netboxcommunity/netbox:${NETBOX_VERSION}
+
+# Copy plugin requirements
+COPY requirements-plugin.txt /tmp/
+
+# Install the plugin
+RUN /opt/netbox/venv/bin/pip install -r /tmp/requirements-plugin.txt
+
+# Copy plugin source code (alternative to pip install)
+# COPY netbox_wug_sync/ /opt/netbox/venv/lib/python3.12/site-packages/netbox_wug_sync/
+
+# Set working directory
+WORKDIR /opt/netbox/netbox
+
+# Run collectstatic to ensure plugin static files are available
+RUN SECRET_KEY="temp" /opt/netbox/venv/bin/python manage.py collectstatic --no-input

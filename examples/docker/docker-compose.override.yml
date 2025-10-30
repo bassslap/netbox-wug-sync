@@ -1,0 +1,19 @@
+# Docker Compose Override for NetBox with WUG Sync Plugin
+# This file shows how to configure NetBox to use a custom image with the plugin
+
+services:
+  netbox:
+    # Using custom built image that includes the netbox-wug-sync plugin
+    image: mynetbox:latest
+    ports:
+      - 8000:8080
+    # Mount the plugin directory for development/updates
+    volumes:
+      - /opt/netbox/netbox-wug-sync:/opt/netbox/netbox-wug-sync:ro
+
+  netbox-worker:
+    # Using same custom image for the worker
+    image: mynetbox:latest
+    # Mount the plugin directory for development/updates
+    volumes:
+      - /opt/netbox/netbox-wug-sync:/opt/netbox/netbox-wug-sync:ro

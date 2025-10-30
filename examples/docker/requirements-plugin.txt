@@ -1,0 +1,12 @@
+# Plugin requirements for Docker build
+# Add this to your requirements-plugin.txt file
+
+# Install from PyPI (when published)
+# netbox-wug-sync==0.1.0
+
+# Install from GitHub (development)
+git+https://github.com/bassslap/netbox-wug-sync.git@main
+
+# Required dependencies
+requests>=2.25.0
+urllib3>=1.26.0
