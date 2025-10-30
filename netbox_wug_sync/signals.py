@@ -30,80 +30,92 @@ def device_saved_handler(sender, instance, created, **kwargs):
     - Device status is 'active'
     - There are active WUG connections configured
     """
-    if not instance.primary_ip4:
-        logger.debug(f"Device {instance.name} has no primary IPv4 address, skipping WUG sync")
-        return
-    
-    if instance.status != DeviceStatusChoices.STATUS_ACTIVE:
-        logger.debug(f"Device {instance.name} is not active (status: {instance.status}), skipping WUG sync")
-        return
-    
-    # Get active WUG connections
-    connections = WUGConnection.objects.filter(is_active=True)
-    if not connections.exists():
-        logger.debug("No active WUG connections found, skipping device sync")
-        return
-    
-    logger.info(f"NetBox device {'created' if created else 'updated'}: {instance.name}, syncing to WUG")
-    
-    # Get the primary IP address
-    primary_ip = str(instance.primary_ip4.address).split('/')[0]  # Remove CIDR notation
-    
-    # Sync to all active WUG connections
-    for connection in connections:
-        try:
-            # Use the new reverse sync functionality
-            result = create_wug_device_from_netbox_data(instance, connection)
-            
-            if result['success']:
-                logger.info(f"Successfully synced device {instance.name} to WUG connection {connection.name} (Device ID: {result.get('device_id', 'unknown')})")
+    try:
+        # Check if device has primary IP and it's not None
+        if not instance.primary_ip4:
+            logger.debug(f"Device {instance.name} has no primary IPv4 address, skipping WUG sync")
+            return
+        
+        # Additional safety check for the address property
+        if not hasattr(instance.primary_ip4, 'address') or not instance.primary_ip4.address:
+            logger.debug(f"Device {instance.name} primary IP has no address property, skipping WUG sync")
+            return
+
+        if instance.status != DeviceStatusChoices.STATUS_ACTIVE:
+            logger.debug(f"Device {instance.name} is not active (status: {instance.status}), skipping WUG sync")
+            return
+        
+        # Get active WUG connections
+        connections = WUGConnection.objects.filter(is_active=True)
+        if not connections.exists():
+            logger.debug("No active WUG connections found, skipping device sync")
+            return
+        
+        logger.info(f"NetBox device {'created' if created else 'updated'}: {instance.name}, syncing to WUG")
+        
+        # Get the primary IP address with additional safety
+        primary_ip = str(instance.primary_ip4.address).split('/')[0]  # Remove CIDR notation
+        
+        # Sync to all active WUG connections
+        for connection in connections:
+            try:
+                # Use the new reverse sync functionality
+                result = create_wug_device_from_netbox_data(instance, connection)
                 
-                # Create sync log entry
-                WUGSyncLog.objects.create(
-                    connection=connection,
-                    sync_type='netbox_to_wug',
-                    status='completed',
-                    start_time=timezone.now(),
-                    end_time=timezone.now(),
-                    devices_discovered=1,
-                    devices_created=1 if created else 0,
-                    devices_updated=0 if created else 1,
-                    devices_errors=0,
-                    summary=f"NetBox device {instance.name} {'created' if created else 'updated'} in WUG via signal - Device ID: {result.get('device_id', 'unknown')}"
-                )
-            else:
-                error_msg = result.get('error', 'Unknown error')
-                logger.error(f"Failed to sync device {instance.name} to WUG connection {connection.name}: {error_msg}")
+                if result['success']:
+                    logger.info(f"Successfully synced device {instance.name} to WUG connection {connection.name} (Device ID: {result.get('device_id', 'unknown')})")
+                    
+                    # Create sync log entry
+                    WUGSyncLog.objects.create(
+                        connection=connection,
+                        sync_type='netbox_to_wug',
+                        status='completed',
+                        start_time=timezone.now(),
+                        end_time=timezone.now(),
+                        devices_discovered=1,
+                        devices_created=1 if created else 0,
+                        devices_updated=0 if created else 1,
+                        devices_errors=0,
+                        summary=f"NetBox device {instance.name} {'created' if created else 'updated'} in WUG via signal - Device ID: {result.get('device_id', 'unknown')}"
+                    )
+                else:
+                    error_msg = result.get('error', 'Unknown error')
+                    logger.error(f"Failed to sync device {instance.name} to WUG connection {connection.name}: {error_msg}")
+                    
+                    # Create error sync log entry
+                    WUGSyncLog.objects.create(
+                        connection=connection,
+                        sync_type='netbox_to_wug',
+                        status='failed',
+                        start_time=timezone.now(),
+                        end_time=timezone.now(),
+                        devices_discovered=1,
+                        devices_created=0,
+                        devices_updated=0,
+                        devices_errors=1,
+                        summary=f"Failed to sync NetBox device {instance.name} to WUG: {error_msg}"
+                    )
+            except Exception as e:
+                logger.error(f"Failed to sync device {instance.name} to WUG connection {connection.name}: {str(e)}")
                 
                 # Create error sync log entry
                 WUGSyncLog.objects.create(
                     connection=connection,
                     sync_type='netbox_to_wug',
-                    status='failed',
+                    status='error',
                     start_time=timezone.now(),
                     end_time=timezone.now(),
                     devices_discovered=1,
                     devices_created=0,
                     devices_updated=0,
                     devices_errors=1,
-                    summary=f"Failed to sync NetBox device {instance.name} to WUG: {error_msg}"
+                    summary=f"Exception while syncing NetBox device {instance.name} to WUG: {str(e)}"
                 )
-        except Exception as e:
-            logger.error(f"Failed to sync device {instance.name} to WUG connection {connection.name}: {str(e)}")
-            
-            # Create error sync log entry
-            WUGSyncLog.objects.create(
-                connection=connection,
-                sync_type='netbox_to_wug',
-                status='error',
-                start_time=timezone.now(),
-                end_time=timezone.now(),
-                devices_discovered=1,
-                devices_created=0,
-                devices_updated=0,
-                devices_errors=1,
-                summary=f"Exception while syncing NetBox device {instance.name} to WUG: {str(e)}"
-            )
+    
+    except Exception as e:
+        # Top-level exception handler to prevent signal errors from breaking NetBox
+        logger.error(f"Critical error in device_saved_handler for device {getattr(instance, 'name', 'unknown')}: {str(e)}")
+        # Don't re-raise the exception to prevent breaking NetBox functionality
 
 
 @receiver(post_delete, sender=Device)
@@ -113,20 +125,26 @@ def device_deleted_handler(sender, instance, **kwargs):
     
     Removes device from WUG when deleted from NetBox if it was previously synced.
     """
-    # Find any WUG devices that were synced from this NetBox device
-    wug_devices = WUGDevice.objects.filter(netbox_device_id=instance.id)
+    try:
+        # Find any WUG devices that were synced from this NetBox device
+        wug_devices = WUGDevice.objects.filter(netbox_device_id=instance.id)
+        
+        if not wug_devices.exists():
+            logger.debug(f"No WUG devices found for deleted NetBox device {instance.name}")
+            return
+        
+        logger.info(f"NetBox device deleted: {instance.name}, removing from WUG")
+        
+        for wug_device in wug_devices:
+            try:
+                remove_device_from_wug(wug_device)
+            except Exception as e:
+                logger.error(f"Failed to remove WUG device {wug_device.device_name}: {str(e)}")
     
-    if not wug_devices.exists():
-        logger.debug(f"No WUG devices found for deleted NetBox device {instance.name}")
-        return
-    
-    logger.info(f"NetBox device deleted: {instance.name}, removing from WUG")
-    
-    for wug_device in wug_devices:
-        try:
-            remove_device_from_wug(wug_device)
-        except Exception as e:
-            logger.error(f"Failed to remove device {instance.name} from WUG: {str(e)}")
+    except Exception as e:
+        # Top-level exception handler to prevent signal errors from breaking NetBox
+        logger.error(f"Critical error in device_deleted_handler for device {getattr(instance, 'name', 'unknown')}: {str(e)}")
+        # Don't re-raise the exception to prevent breaking NetBox functionality
 
 
 def remove_device_from_wug(wug_device):
