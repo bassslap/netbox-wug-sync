@@ -42,9 +42,14 @@
         margin-bottom: 5px;
     }
     .dashboard-logo {
-        font-size: 1.2em;
         margin-right: 12px;
         vertical-align: middle;
+    }
+    .dashboard-logo img {
+        height: 2rem;
+        width: auto;
+        vertical-align: middle;
+        filter: brightness(0) saturate(100%) invert(42%) sepia(93%) saturate(5783%) hue-rotate(206deg) brightness(96%) contrast(96%);
     }
     .dashboard-title {
         display: flex;
@@ -56,7 +61,7 @@
     <div class="col-12 position-relative">
         <h1 class="mb-4 dashboard-title">
             <span class="dashboard-logo text-primary">
-                <i class="mdi mdi-radar text-primary"></i>
+                <img src="{% static 'netbox_wug_sync/img/wug-logo.svg' %}" alt="WhatsUp Gold Logo" />
                 <strong>WhatsUp Gold</strong>
             </span>
             <i class="mdi mdi-view-dashboard me-2 text-primary"></i>
