@@ -31,8 +31,15 @@ def device_saved_handler(sender, instance, created, **kwargs):
     - There are active WUG connections configured
     """
     try:
+        logger.debug(f"Device signal triggered for {getattr(instance, 'name', 'unknown')} - created: {created}")
+        
+        # Additional safety: ensure instance is a proper Device object
+        if not instance or not hasattr(instance, 'name'):
+            logger.debug("Signal triggered with invalid device instance")
+            return
+            
         # Check if device has primary IP and it's not None
-        if not instance.primary_ip4:
+        if not hasattr(instance, 'primary_ip4') or not instance.primary_ip4:
             logger.debug(f"Device {instance.name} has no primary IPv4 address, skipping WUG sync")
             return
         
@@ -41,6 +48,11 @@ def device_saved_handler(sender, instance, created, **kwargs):
             logger.debug(f"Device {instance.name} primary IP has no address property, skipping WUG sync")
             return
 
+        # Additional safety for status attribute
+        if not hasattr(instance, 'status'):
+            logger.debug(f"Device {instance.name} has no status attribute, skipping WUG sync")
+            return
+            
         if instance.status != DeviceStatusChoices.STATUS_ACTIVE:
             logger.debug(f"Device {instance.name} is not active (status: {instance.status}), skipping WUG sync")
             return
@@ -126,6 +138,11 @@ def device_deleted_handler(sender, instance, **kwargs):
     Removes device from WUG when deleted from NetBox if it was previously synced.
     """
     try:
+        logger.debug(f"Device deletion signal triggered for {getattr(instance, 'name', 'unknown')}")
+        
+        # Temporary: Just log and return to isolate the issue
+        return
+        
         # Find any WUG devices that were synced from this NetBox device
         wug_devices = WUGDevice.objects.filter(netbox_device_id=instance.id)
         
