@@ -120,6 +120,29 @@ class WUGDeviceDetailView(generic.ObjectView):
     template_name = 'netbox_wug_sync/wugdevice_detail.html'
 
 
+class WUGDeviceCreateView(generic.ObjectEditView):
+    """Create view for WUG Device"""
+    
+    model = WUGDevice
+    form_class = None  # Use default model form
+    template_name = 'netbox_wug_sync/wugdevice_edit.html'
+
+
+class WUGDeviceEditView(generic.ObjectEditView):
+    """Edit view for WUG Device"""
+    
+    model = WUGDevice
+    form_class = None  # Use default model form
+    template_name = 'netbox_wug_sync/wugdevice_edit.html'
+
+
+class WUGDeviceDeleteView(generic.ObjectDeleteView):
+    """Delete view for WUG Device"""
+    
+    model = WUGDevice
+    template_name = 'netbox_wug_sync/wugdevice_delete.html'
+
+
 class WUGSyncLogListView(generic.ObjectListView):
     """List view for WUG Sync Logs"""
     

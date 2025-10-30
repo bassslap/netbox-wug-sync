@@ -30,7 +30,10 @@ urlpatterns = [
     
     # WUG Devices
     path('devices/', views.WUGDeviceListView.as_view(), name='wugdevice_list'),
+    path('devices/add/', views.WUGDeviceCreateView.as_view(), name='wugdevice_add'),
     path('devices/<int:pk>/', views.WUGDeviceDetailView.as_view(), name='wugdevice'),
+    path('devices/<int:pk>/edit/', views.WUGDeviceEditView.as_view(), name='wugdevice_edit'),
+    path('devices/<int:pk>/delete/', views.WUGDeviceDeleteView.as_view(), name='wugdevice_delete'),
     
     # Device management actions
     path('devices/<int:pk>/enable-sync/', views.device_enable_sync_view, name='wugdevice_enable_sync'),
