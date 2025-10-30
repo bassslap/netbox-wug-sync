@@ -41,6 +41,16 @@
         margin-right: 5px;
         margin-bottom: 5px;
     }
+    .dashboard-logo {
+        height: 35px;
+        width: auto;
+        margin-right: 12px;
+        vertical-align: middle;
+    }
+    .dashboard-title {
+        display: flex;
+        align-items: center;
+    }
 </style>
 {% endblock %}
 
@@ -48,7 +58,8 @@
 <!-- Header with refresh button -->
 <div class="row">
     <div class="col-12 position-relative">
-        <h1 class="mb-4">
+        <h1 class="mb-4 dashboard-title">
+            <img src="{% static 'netbox_wug_sync/img/wug-logo.svg' %}" alt="WhatsUp Gold" class="dashboard-logo">
             <i class="mdi mdi-view-dashboard me-2 text-primary"></i>
             {% trans "WhatsUp Gold Sync Dashboard" %}
         </h1>

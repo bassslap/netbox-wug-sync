@@ -1,0 +1,26 @@
+# This is a placeholder for a PNG logo
+# You would replace this with an actual PNG file
+# For now, I'll create a simple text file that explains how to add a PNG logo
+
+WhatsUp Gold Logo PNG Instructions:
+
+To add a PNG logo instead of or in addition to the SVG:
+
+1. Save your logo as 'wug-logo.png' in this directory:
+   /netbox_wug_sync/static/netbox_wug_sync/img/
+
+2. Update the dashboard template to use PNG instead:
+   Change: src="{% static 'netbox_wug_sync/img/wug-logo.svg' %}"
+   To: src="{% static 'netbox_wug_sync/img/wug-logo.png' %}"
+
+3. Recommended logo specifications:
+   - Size: 40x40 pixels (or larger, will be scaled)
+   - Format: PNG with transparent background
+   - Colors: WhatsUp Gold brand colors (blues, golds)
+
+Current SVG logo shows:
+- Blue circular background (#0066cc)
+- White network nodes
+- Gold center node (#ffd700) 
+- Network connection lines
+- Monitoring wave patterns
