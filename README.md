@@ -1,5 +1,11 @@
 # NetBox WhatsUp Gold Sync Plugin
 
+[![CI/CD Pipeline](https://github.com/bassslap/netbox-wug-sync/actions/workflows/ci.yml/badge.svg)](https://github.com/bassslap/netbox-wug-sync/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
+[![NetBox Version](https://img.shields.io/badge/netbox-4.0%2B-orange.svg)](https://netbox.dev)
+[![Code Quality](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
 A NetBox plugin for synchronizing network devices between NetBox and WhatsUp Gold monitoring systems.
 
 ## 🚀 Quick Start
