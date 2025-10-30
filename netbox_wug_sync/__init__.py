@@ -8,7 +8,7 @@ class WUGSyncConfig(PluginConfig):
     version = '0.1.0'
     author = 'NetBox Admin'
     author_email = 'admin@example.com'
-    base_url = 'wug-sync'
+    base_url = 'netbox-wug-sync'
     
     # Required configuration parameters that must be set in NetBox config
     required_settings = [
