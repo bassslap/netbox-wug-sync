@@ -115,6 +115,8 @@ class WUGConnection(NetBoxModel):
         return f"{self.name} ({self.host}:{self.port})"
 
     def get_absolute_url(self):
+        if not self.pk:
+            return '#'  # Return placeholder if no primary key
         return reverse('plugins:netbox_wug_sync:wugconnection', args=[self.pk])
 
     @property
@@ -278,6 +280,8 @@ class WUGDevice(NetBoxModel):
         return f"{self.wug_name} ({self.wug_id})"
 
     def get_absolute_url(self):
+        if not self.pk:
+            return '#'  # Return placeholder if no primary key
         return reverse('plugins:netbox_wug_sync:wugdevice', args=[self.pk])
 
     @property
@@ -383,6 +387,8 @@ class WUGSyncLog(NetBoxModel):
         return f"Sync {self.id} - {self.connection.name} ({self.status})"
 
     def get_absolute_url(self):
+        if not self.pk:
+            return '#'  # Return placeholder if no primary key
         return reverse('plugins:netbox_wug_sync:wugsynclog', args=[self.pk])
 
     @property
@@ -508,10 +514,14 @@ class NetBoxIPExport(NetBoxModel):
         unique_together = ['connection', 'ip_address']
 
     def __str__(self):
-        device_name = self.netbox_device.name if self.netbox_device else 'Unknown'
+        device_name = 'Unknown'
+        if self.netbox_device and hasattr(self.netbox_device, 'name') and self.netbox_device.name:
+            device_name = self.netbox_device.name
         return f"{self.ip_address} ({device_name}) -> {self.connection.name}"
 
     def get_absolute_url(self):
+        if not self.pk:
+            return '#'  # Return placeholder if no primary key
         return reverse('plugins:netbox_wug_sync:netboxipexport', args=[self.pk])
 
     @property
