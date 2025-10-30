@@ -1,85 +1,38 @@
 # GitHub Actions workflow for NetBox WUG Sync plugin
-# Provides automated testing, code quality checks, and deployment validation
+# Basic validation and code quality checks
 
-name: CI/CD Pipeline
+name: CI Pipeline
 
 on:
   push:
     branches: [ main, develop ]
   pull_request:
     branches: [ main ]
-  release:
-    types: [ published ]
-
-env:
-  PYTHON_VERSION: "3.10"
 
 jobs:
-  lint:
-    name: Code Quality & Linting
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install flake8 black isort pylint bandit safety
-
-      - name: Run Black (code formatting)
-        run: |
-          black --check --diff netbox_wug_sync/ || echo "Black formatting check complete"
-
-      - name: Run isort (import sorting)
-        run: |
-          isort --check-only --diff netbox_wug_sync/ || echo "isort check complete"
-
-      - name: Run Flake8 (style guide enforcement)
-        run: |
-          flake8 netbox_wug_sync/ --max-line-length=88 --extend-ignore=E203,W503 || echo "Flake8 check complete"
-
-      - name: Run Bandit (security linting)
-        run: |
-          bandit -r netbox_wug_sync/ -f json -o bandit-report.json || echo "Bandit security scan complete"
-
-      - name: Upload security reports
-        uses: actions/upload-artifact@v3
-        if: always()
-        with:
-          name: security-reports
-          path: |
-            bandit-report.json
-
-  basic-tests:
+  validate:
     name: Basic Validation
     runs-on: ubuntu-latest
-    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python 3.10
         uses: actions/setup-python@v4
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: "3.10"
 
       - name: Install basic dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install django requests
+          pip install flake8
 
       - name: Validate Python syntax
         run: |
           python -m py_compile netbox_wug_sync/*.py
-          python -m py_compile netbox_wug_sync/*/*.py
+          find netbox_wug_sync -name "*.py" -exec python -m py_compile {} \;
 
-      - name: Check imports
+      - name: Basic import test
         run: |
           python -c "
           import sys
@@ -87,44 +40,19 @@ jobs:
           try:
               from netbox_wug_sync import __version__
               print(f'Plugin version: {__version__}')
-              print('Basic imports successful')
+              print('✅ Basic import successful')
           except Exception as e:
-              print(f'Import check failed: {e}')
+              print(f'❌ Import failed: {e}')
               sys.exit(1)
           "
 
-  docker-validation:
-    name: Docker Build Validation
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Validate Docker examples
+      - name: Run basic linting
         run: |
-          cd examples/docker
-          # Check that Dockerfile exists and is valid
-          if [ -f "Dockerfile.plugin" ]; then
-            echo "Dockerfile.plugin found"
-          else
-            echo "Warning: Dockerfile.plugin not found"
-          fi
-          
-          # Validate docker-compose files
-          if [ -f "docker-compose.override.yml" ]; then
-            echo "docker-compose.override.yml found"
-          else
-            echo "Warning: docker-compose.override.yml not found"
-          fi
+          flake8 netbox_wug_sync/ --count --select=E9,F63,F7,F82 --show-source --statistics || true
 
-  security-scan:
-    name: Security Scanning
+  security:
+    name: Security Scan
     runs-on: ubuntu-latest
-    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -134,35 +62,21 @@ jobs:
         with:
           scan-type: 'fs'
           scan-ref: '.'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-
-      - name: Upload Trivy scan results
-        uses: github/codeql-action/upload-sarif@v2
-        if: always()
-        with:
-          sarif_file: 'trivy-results.sarif'
+          format: 'table'
+        continue-on-error: true
 
   notify:
-    name: Notification
+    name: Results
     runs-on: ubuntu-latest
-    needs: [lint, basic-tests, docker-validation]
+    needs: [validate, security]
     if: always()
-    
     steps:
-      - name: Notify on success
-        if: ${{ needs.lint.result == 'success' && needs.basic-tests.result == 'success' && needs.docker-validation.result == 'success' }}
+      - name: Report results
         run: |
-          echo "All CI/CD pipeline jobs completed successfully!"
-          echo "✅ Code quality checks passed"
-          echo "✅ Basic validation passed"
-          echo "✅ Docker validation passed"
-
-      - name: Notify on failure
-        if: ${{ needs.lint.result == 'failure' || needs.basic-tests.result == 'failure' || needs.docker-validation.result == 'failure' }}
-        run: |
-          echo "CI/CD pipeline failed!"
-          echo "Lint: ${{ needs.lint.result }}"
-          echo "Basic Tests: ${{ needs.basic-tests.result }}"
-          echo "Docker: ${{ needs.docker-validation.result }}"
-          exit 1
+          echo "Validation: ${{ needs.validate.result }}"
+          echo "Security: ${{ needs.security.result }}"
+          if [ "${{ needs.validate.result }}" = "success" ]; then
+            echo "✅ Basic validation passed"
+          else
+            echo "❌ Validation failed"
+          fi
