@@ -29,6 +29,8 @@ def device_saved_handler(sender, instance, created, **kwargs):
     - Device has an IPv4 primary address
     - Device status is 'active'
     - There are active WUG connections configured
+    
+    Removes device from WUG if status changed to non-active.
     """
     try:
         logger.debug(f"Device signal triggered for {getattr(instance, 'name', 'unknown')} - created: {created}")
@@ -36,6 +38,25 @@ def device_saved_handler(sender, instance, created, **kwargs):
         # Additional safety: ensure instance is a proper Device object
         if not instance or not hasattr(instance, 'name'):
             logger.debug("Signal triggered with invalid device instance")
+            return
+
+        # Additional safety for status attribute
+        if not hasattr(instance, 'status'):
+            logger.debug(f"Device {instance.name} has no status attribute, skipping WUG sync")
+            return
+        
+        # If device status is not active, remove it from WUG
+        if instance.status != DeviceStatusChoices.STATUS_ACTIVE:
+            logger.debug(f"Device {instance.name} is not active (status: {instance.status})")
+            # Check if device was previously synced to WUG
+            wug_devices = WUGDevice.objects.filter(netbox_device=instance)
+            if wug_devices.exists():
+                logger.info(f"Device {instance.name} status changed to {instance.status}, removing from WUG")
+                for wug_device in wug_devices:
+                    try:
+                        remove_device_from_wug(wug_device)
+                    except Exception as e:
+                        logger.error(f"Failed to remove WUG device {wug_device.wug_name}: {str(e)}")
             return
             
         # Check if device has primary IP and it's not None
@@ -46,15 +67,6 @@ def device_saved_handler(sender, instance, created, **kwargs):
         # Additional safety check for the address property
         if not hasattr(instance.primary_ip4, 'address') or not instance.primary_ip4.address:
             logger.debug(f"Device {instance.name} primary IP has no address property, skipping WUG sync")
-            return
-
-        # Additional safety for status attribute
-        if not hasattr(instance, 'status'):
-            logger.debug(f"Device {instance.name} has no status attribute, skipping WUG sync")
-            return
-            
-        if instance.status != DeviceStatusChoices.STATUS_ACTIVE:
-            logger.debug(f"Device {instance.name} is not active (status: {instance.status}), skipping WUG sync")
             return
         
         # Get active WUG connections
@@ -140,10 +152,9 @@ def device_deleted_handler(sender, instance, **kwargs):
     try:
         logger.debug(f"Device deletion signal triggered for {getattr(instance, 'name', 'unknown')}")
         
-        # Temporary: Just log and return to isolate the issue
-        return
-        
         # Find any WUG devices that were synced from this NetBox device
+        # Note: At this point, the instance is being deleted, so we need to check
+        # WUGDevice records that reference it before it's fully deleted
         wug_devices = WUGDevice.objects.filter(netbox_device_id=instance.id)
         
         if not wug_devices.exists():
@@ -156,7 +167,7 @@ def device_deleted_handler(sender, instance, **kwargs):
             try:
                 remove_device_from_wug(wug_device)
             except Exception as e:
-                logger.error(f"Failed to remove WUG device {wug_device.device_name}: {str(e)}")
+                logger.error(f"Failed to remove WUG device {wug_device.wug_name}: {str(e)}")
     
     except Exception as e:
         # Top-level exception handler to prevent signal errors from breaking NetBox
@@ -175,41 +186,37 @@ def remove_device_from_wug(wug_device):
         with WUGAPIClient(
             host=wug_device.connection.host,
             username=wug_device.connection.username,
-            password=wug_device.connection.password,  # Fix: Use password field directly
+            password=wug_device.connection.password,
             port=wug_device.connection.port,
             use_ssl=wug_device.connection.use_ssl,
             verify_ssl=wug_device.connection.verify_ssl
         ) as client:
             
-            # Remove device from WUG
-            result = client.delete_device(wug_device.wug_device_id)
+            # Remove device from WUG using the wug_id field
+            # delete_device returns True on success or raises an exception
+            client.delete_device(wug_device.wug_id)
             
-            if result.get('success', False):
-                logger.info(f"Successfully removed device {wug_device.device_name} from WUG")
-                
-                # Create sync log entry
-                WUGSyncLog.objects.create(
-                    connection=wug_device.connection,
-                    sync_type='netbox_to_wug',
-                    status='completed',
-                    start_time=timezone.now(),
-                    end_time=timezone.now(),
-                    devices_discovered=1,
-                    devices_created=0,
-                    devices_updated=0,
-                    devices_errors=0,
-                    summary=f"NetBox device {wug_device.device_name} removed from WUG"
-                )
-                
-                # Delete the WUGDevice record
-                wug_device.delete()
-                
-            else:
-                error_msg = result.get('message', 'Unknown error')
-                logger.error(f"Failed to remove device {wug_device.device_name} from WUG: {error_msg}")
+            logger.info(f"Successfully removed device {wug_device.wug_name} from WUG")
+            
+            # Create sync log entry
+            WUGSyncLog.objects.create(
+                connection=wug_device.connection,
+                sync_type='netbox_to_wug',
+                status='completed',
+                start_time=timezone.now(),
+                end_time=timezone.now(),
+                devices_discovered=1,
+                devices_created=0,
+                devices_updated=0,
+                devices_errors=0,
+                summary=f"NetBox device {wug_device.wug_name} removed from WUG"
+            )
+            
+            # Delete the WUGDevice record
+            wug_device.delete()
                 
     except Exception as e:
-        logger.error(f"Exception while removing device {wug_device.device_name} from WUG: {str(e)}")
+        logger.error(f"Exception while removing device {wug_device.wug_name} from WUG: {str(e)}")
 
 
 def check_ip_conflicts_after_scan(ip_address, netbox_device, wug_connection, wug_client):
