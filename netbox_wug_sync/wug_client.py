@@ -165,7 +165,17 @@ class WUGAPIClient:
         except requests.exceptions.ConnectionError as e:
             raise WUGAPIException(f"Connection error: {str(e)}")
         except requests.exceptions.HTTPError as e:
-            raise WUGAPIException(f"HTTP error {response.status_code}: {str(e)}")
+            # Try to get error details from response body
+            error_detail = ""
+            try:
+                error_body = response.json()
+                error_detail = f" - Details: {error_body}"
+            except:
+                try:
+                    error_detail = f" - Response: {response.text[:500]}"
+                except:
+                    pass
+            raise WUGAPIException(f"HTTP error {response.status_code}: {str(e)}{error_detail}")
         except requests.exceptions.RequestException as e:
             raise WUGAPIException(f"Request error: {str(e)}")
     
@@ -490,17 +500,157 @@ class WUGAPIClient:
             List of device group dictionaries
         """
         try:
-            response = self._make_request('GET', '/groups')
+            response = self._make_request('GET', '/device-groups/-')
             
-            # Ensure we have a list
+            # Response structure: {'paging': {...}, 'data': {'groups': [...]}}
             if isinstance(response, dict):
-                return response.get('groups', [])
+                data = response.get('data', {})
+                return data.get('groups', [])
             return response
             
         except WUGAPIException:
             raise
         except Exception as e:
             raise WUGAPIException(f"Failed to get device groups: {str(e)}")
+    
+    def get_group_path(self, group_name: str) -> Optional[str]:
+        """
+        Get the full hierarchical path for a group by walking up the parent chain
+        
+        Args:
+            group_name: Name of the group to find the path for
+            
+        Returns:
+            Full group path (e.g., "ParentGroup\\ChildGroup") or just the group name if no parents
+            None if group not found
+        """
+        try:
+            groups = self.get_device_groups()
+            
+            # Build a lookup dictionary by group ID and name
+            groups_by_id = {g['id']: g for g in groups}
+            groups_by_name = {g['name']: g for g in groups}
+            
+            # Find the target group
+            if group_name not in groups_by_name:
+                logger.warning(f"Group '{group_name}' not found in WUG")
+                return None
+            
+            target_group = groups_by_name[group_name]
+            
+            # Build path by walking up parent chain
+            path_parts = [target_group['name']]
+            current_parent_id = target_group.get('parentGroupId', '')
+            
+            # Walk up the parent chain (max 10 levels to prevent infinite loops)
+            max_depth = 10
+            while current_parent_id and current_parent_id != '0' and current_parent_id != '' and max_depth > 0:
+                if current_parent_id in groups_by_id:
+                    parent_group = groups_by_id[current_parent_id]
+                    path_parts.insert(0, parent_group['name'])
+                    current_parent_id = parent_group.get('parentGroupId', '')
+                else:
+                    break
+                max_depth -= 1
+            
+            # Join path parts with backslash
+            full_path = '\\'.join(path_parts)
+            logger.info(f"Resolved group path for '{group_name}': {full_path}")
+            return full_path
+            
+        except Exception as e:
+            logger.error(f"Failed to get group path for '{group_name}': {e}")
+            return None
+    
+    def create_group(self, group_name: str, parent_group: str = "My Network") -> Dict:
+        """
+        Create a new device group in WhatsUp Gold
+        
+        Args:
+            group_name: Name of the group to create
+            parent_group: Parent group name (default: "My Network")
+            
+        Returns:
+            Created group data as dictionary
+        """
+        try:
+            logger.info(f"Creating WUG group '{group_name}' under parent '{parent_group}'")
+            
+            # WUG group creation payload
+            group_data = {
+                "name": group_name,
+                "parentGroup": parent_group
+            }
+            
+            response = self._make_request('POST', '/device-groups/-', data=group_data)
+            logger.info(f"Successfully created group '{group_name}' in WUG")
+            return response
+            
+        except WUGAPIException as e:
+            # If group already exists, log but don't fail
+            if "already exists" in str(e).lower() or "409" in str(e):
+                logger.info(f"Group '{group_name}' already exists in WUG")
+                return {"name": group_name, "status": "already_exists"}
+            raise
+        except Exception as e:
+            raise WUGAPIException(f"Failed to create group '{group_name}': {str(e)}")
+    
+    def ensure_group_exists(self, group_name: str, parent_group: str = "My Network") -> bool:
+        """
+        Ensure a group exists in WUG, creating it if necessary
+        
+        Args:
+            group_name: Name of the group to ensure exists
+            parent_group: Parent group name (default: "My Network")
+            
+        Returns:
+            True if group exists or was created successfully
+        """
+        try:
+            # Check if group already exists
+            groups = self.get_device_groups()
+            for group in groups:
+                if group.get('name') == group_name:
+                    logger.info(f"Group '{group_name}' already exists in WUG")
+                    return True
+            
+            # Group doesn't exist, create it
+            logger.info(f"Group '{group_name}' not found, creating it")
+            self.create_group(group_name, parent_group)
+            return True
+            
+        except WUGAPIException:
+            raise
+        except Exception as e:
+            raise WUGAPIException(f"Failed to ensure group exists '{group_name}': {str(e)}")
+    
+    def add_device_to_group(self, device_id: str, group_id: str) -> bool:
+        """
+        Add a device to a group in WhatsUp Gold
+        
+        Args:
+            device_id: Device ID to add to group
+            group_id: Group ID to add device to
+            
+        Returns:
+            True if successful
+        """
+        try:
+            logger.info(f"Adding device {device_id} to group {group_id}")
+            
+            # Use PUT to add device to group
+            endpoint = f'/device-groups/{group_id}/devices/{device_id}'
+            response = self._make_request('PUT', endpoint)
+            
+            logger.info(f"Successfully added device {device_id} to group {group_id}")
+            return True
+            
+        except WUGAPIException as e:
+            logger.error(f"Failed to add device to group: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Failed to add device {device_id} to group {group_id}: {e}")
+            return False
     
     def scan_network(self, network: str) -> Dict:
         """
@@ -1045,10 +1195,20 @@ class WUGAPIClient:
             if hostname is None:
                 hostname = display_name
             
-            # Prepare groups array - add to group if specified
+            # Prepare groups array - groups should be objects with 'name' key
             groups = []
+            
             if group_name:
-                groups.append(group_name)
+                # Verify group exists
+                all_groups = self.get_device_groups()
+                matching_group = next((g for g in all_groups if g.get('name') == group_name), None)
+                
+                if matching_group:
+                    # Groups need to be specified as objects with 'name' key
+                    groups.append({"name": group_name})
+                    logger.info(f"Adding device to WUG group '{group_name}'")
+                else:
+                    logger.warning(f"Group '{group_name}' not found in WUG, device will be created without group assignment")
             
             # Create device template
             device_template = {
@@ -1088,7 +1248,12 @@ class WUGAPIClient:
             }
             
             # Make PATCH request to create device
+            logger.debug(f"Device creation payload: {body}")
             response = self._make_request('PATCH', '/devices/-/config/template', data=body)
+            logger.info(f"===== FULL API RESPONSE =====")
+            logger.info(f"Response type: {type(response)}")
+            logger.info(f"Response: {json.dumps(response, indent=2)}")
+            logger.info(f"============================")
             
             if response and 'data' in response:
                 data = response['data']
@@ -1115,14 +1280,15 @@ class WUGAPIClient:
                         'errors': data.get('errors', [])
                     }
                 else:
-                    logger.error(f"Device creation response missing device ID: {data}")
+                    logger.error(f"Device creation response missing device ID or idMap. Full data keys: {list(data.keys())}")
+                    logger.error(f"Full data: {json.dumps(data, indent=2)}")
                     return {
                         'success': False,
                         'message': 'Device creation response missing device ID',
                         'response_data': data
                     }
             else:
-                logger.error(f"Invalid device creation response: {response}")
+                logger.error(f"Invalid device creation response (no 'data' key): {response}")
                 return {
                     'success': False,
                     'message': 'Invalid API response format'
