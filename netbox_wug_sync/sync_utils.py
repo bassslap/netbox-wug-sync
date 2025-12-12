@@ -239,6 +239,23 @@ def create_or_update_netbox_device(wug_device, netbox_device_data: Dict) -> Tupl
         # Check if a device with this name already exists
         existing_device = Device.objects.filter(name=device_name).first()
         if existing_device:
+            # Check if another WUGDevice already points to this NetBox device
+            conflicting_wug_device = WUGDevice.objects.filter(
+                netbox_device=existing_device
+            ).exclude(id=wug_device.id).first()
+            
+            if conflicting_wug_device:
+                # Another WUG device already claims this NetBox device - this is a duplicate
+                logger.warning(
+                    f"Duplicate detected: NetBox device '{existing_device.name}' is already "
+                    f"linked to WUG device '{conflicting_wug_device.wug_name}' "
+                    f"(WUG ID: {conflicting_wug_device.wug_id}). "
+                    f"Not linking to current WUG device '{wug_device.wug_name}' "
+                    f"(WUG ID: {wug_device.wug_id})."
+                )
+                # Don't link this WUGDevice to avoid duplicates
+                return existing_device, 'skipped'
+            
             # Use existing device and associate it
             wug_device.netbox_device = existing_device
             wug_device.save()
