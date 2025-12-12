@@ -1340,6 +1340,12 @@ def create_wug_device_from_netbox_data(netbox_device: Device, connection) -> Dic
             elif 'firewall' in role_name:
                 primary_role = "Firewall"
         
+        # Get NetBox Site to use as WUG Group
+        group_name = None
+        if netbox_device.site:
+            group_name = netbox_device.site.name
+            logger.info(f"Using NetBox site '{group_name}' as WUG group for device {netbox_device.name}")
+        
         # Create device in WUG
         result = client.create_device(
             display_name=netbox_device.name,
@@ -1347,7 +1353,8 @@ def create_wug_device_from_netbox_data(netbox_device: Device, connection) -> Dic
             hostname=netbox_device.name,
             device_type=device_type,
             primary_role=primary_role,
-            poll_interval=60  # Default polling interval
+            poll_interval=60,  # Default polling interval
+            group_name=group_name  # Map NetBox Site to WUG Group
         )
         
         if result.get('success'):

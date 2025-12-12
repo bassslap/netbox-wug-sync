@@ -1019,7 +1019,7 @@ class WUGAPIClient:
 
     def create_device(self, display_name: str, ip_address: str, hostname: str = None, 
                      device_type: str = "Network Device", primary_role: str = "Device",
-                     poll_interval: int = 60) -> Dict:
+                     poll_interval: int = 60, group_name: str = None) -> Dict:
         """
         Create a new device in WhatsUp Gold
         
@@ -1030,6 +1030,7 @@ class WUGAPIClient:
             device_type: Device type (optional)
             primary_role: Primary role (optional)
             poll_interval: Polling interval in seconds (optional)
+            group_name: WUG group/location name (optional, maps to NetBox Site)
             
         Returns:
             Dictionary with creation result including device ID
@@ -1038,11 +1039,16 @@ class WUGAPIClient:
             WUGAPIException: For API errors
         """
         try:
-            logger.info(f"Creating device '{display_name}' with IP {ip_address}")
+            logger.info(f"Creating device '{display_name}' with IP {ip_address} in group '{group_name or 'My Network'}'")
             
             # Use display_name as hostname if not provided
             if hostname is None:
                 hostname = display_name
+            
+            # Prepare groups array - add to group if specified
+            groups = []
+            if group_name:
+                groups.append(group_name)
             
             # Create device template
             device_template = {
@@ -1072,7 +1078,7 @@ class WUGAPIClient:
                 "ncmTasks": [],
                 "applicationProfiles": [],
                 "layer2Data": "",
-                "groups": []
+                "groups": groups
             }
             
             # Create request body with correct structure
