@@ -14,6 +14,7 @@ from django.utils import timezone
 from dcim.models import Site, DeviceType, DeviceRole, Manufacturer, Device
 from dcim.choices import DeviceStatusChoices
 from extras.models import Tag
+from .models import WUGDevice
 
 
 logger = logging.getLogger(__name__)
