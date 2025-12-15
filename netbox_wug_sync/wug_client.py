@@ -1221,14 +1221,25 @@ class WUGAPIClient:
             if hostname is None:
                 hostname = display_name
             
-            # Prepare groups array - groups should be objects with 'name' key
+            # Prepare groups array - need to find group ID by name
             groups = []
             
             if group_name:
-                # Add group assignment - WUG will place device in group if it exists
-                groups.append({"name": group_name})
-                logger.info(f"Requesting device placement in WUG group '{group_name}'")
-                logger.debug(f"Group assignment format: {groups}")
+                # Look up the group to get its ID (supports nested groups)
+                try:
+                    all_groups = self.get_device_groups()
+                    matching_group = next((g for g in all_groups if g.get('name') == group_name), None)
+                    
+                    if matching_group:
+                        group_id = matching_group.get('id')
+                        # Use group ID instead of name for nested group support
+                        groups.append({"id": group_id})
+                        logger.info(f"Requesting device placement in WUG group '{group_name}' (ID: {group_id})")
+                        logger.debug(f"Group assignment format: {groups}")
+                    else:
+                        logger.warning(f"Group '{group_name}' not found in WUG, device will be created without group assignment")
+                except Exception as e:
+                    logger.error(f"Failed to lookup group '{group_name}': {e}. Creating device without group assignment.")
             
             # Create device template
             device_template = {
