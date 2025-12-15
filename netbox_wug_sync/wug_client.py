@@ -1226,20 +1226,29 @@ class WUGAPIClient:
             
             if group_name:
                 # Look up the group to get its ID (supports nested groups)
+                logger.info(f"Looking up WUG group: {group_name}")
                 try:
                     all_groups = self.get_device_groups()
-                    matching_group = next((g for g in all_groups if g.get('name') == group_name), None)
+                    logger.info(f"Retrieved {len(all_groups) if all_groups else 0} groups from WUG")
                     
-                    if matching_group:
-                        group_id = matching_group.get('id')
-                        # Use group ID instead of name for nested group support
-                        groups.append({"id": group_id})
-                        logger.info(f"Requesting device placement in WUG group '{group_name}' (ID: {group_id})")
-                        logger.debug(f"Group assignment format: {groups}")
+                    if not all_groups:
+                        logger.error("No groups retrieved from WUG API")
                     else:
-                        logger.warning(f"Group '{group_name}' not found in WUG, device will be created without group assignment")
+                        matching_group = next((g for g in all_groups if g.get('name') == group_name), None)
+                        
+                        if matching_group:
+                            group_id = matching_group.get('id')
+                            # Use group ID instead of name for nested group support
+                            groups.append({"id": group_id})
+                            logger.info(f"Found group '{group_name}' with ID: {group_id}")
+                        else:
+                            logger.warning(f"Group '{group_name}' not found in {len(all_groups)} groups")
+                            # Log first few groups for debugging
+                            if all_groups and len(all_groups) > 0:
+                                sample_groups = [g.get('name') for g in all_groups[:5]]
+                                logger.debug(f"Sample groups: {sample_groups}")
                 except Exception as e:
-                    logger.error(f"Failed to lookup group '{group_name}': {e}. Creating device without group assignment.")
+                    logger.error(f"Exception during group lookup for '{group_name}': {e}", exc_info=True)
             
             # Create device template
             device_template = {
