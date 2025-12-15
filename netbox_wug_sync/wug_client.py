@@ -1225,16 +1225,9 @@ class WUGAPIClient:
             groups = []
             
             if group_name:
-                # Verify group exists
-                all_groups = self.get_device_groups()
-                matching_group = next((g for g in all_groups if g.get('name') == group_name), None)
-                
-                if matching_group:
-                    # Groups need to be specified as objects with 'name' key
-                    groups.append({"name": group_name})
-                    logger.info(f"Adding device to WUG group '{group_name}'")
-                else:
-                    logger.warning(f"Group '{group_name}' not found in WUG, device will be created without group assignment")
+                # Add group assignment - WUG will place device in group if it exists
+                groups.append({"name": group_name})
+                logger.info(f"Requesting device placement in WUG group '{group_name}'")
             
             # Create device template
             device_template = {
