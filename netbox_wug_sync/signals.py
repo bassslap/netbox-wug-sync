@@ -6,7 +6,7 @@ when they are created or updated in NetBox with specific criteria.
 """
 
 import logging
-from django.db.models.signals import post_save, post_delete
+from django.db.models.signals import post_save, post_delete, pre_delete
 from django.dispatch import receiver
 from django.utils import timezone
 from dcim.models import Device
@@ -142,26 +142,26 @@ def device_saved_handler(sender, instance, created, **kwargs):
         # Don't re-raise the exception to prevent breaking NetBox functionality
 
 
-@receiver(post_delete, sender=Device)
+@receiver(pre_delete, sender=Device)
 def device_deleted_handler(sender, instance, **kwargs):
     """
     Handle Device deletion to remove from WhatsUp Gold
     
     Removes device from WUG when deleted from NetBox if it was previously synced.
+    Uses pre_delete instead of post_delete to access ForeignKey relationships before they're cleared.
     """
     try:
         logger.debug(f"Device deletion signal triggered for {getattr(instance, 'name', 'unknown')}")
         
         # Find any WUG devices that were synced from this NetBox device
-        # Note: At this point, the instance is being deleted, so we need to check
-        # WUGDevice records that reference it before it's fully deleted
-        wug_devices = WUGDevice.objects.filter(netbox_device_id=instance.id)
+        # Using pre_delete allows us to access the relationship before it's cleared
+        wug_devices = WUGDevice.objects.filter(netbox_device=instance)
         
         if not wug_devices.exists():
             logger.debug(f"No WUG devices found for deleted NetBox device {instance.name}")
             return
         
-        logger.info(f"NetBox device deleted: {instance.name}, removing from WUG")
+        logger.info(f"NetBox device deleted: {instance.name}, removing {wug_devices.count()} device(s) from WUG")
         
         for wug_device in wug_devices:
             try:
