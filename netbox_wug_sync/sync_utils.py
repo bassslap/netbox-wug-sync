@@ -1347,13 +1347,14 @@ def create_wug_device_from_netbox_data(netbox_device: Device, connection) -> Dic
             group_name = netbox_device.site.name
             logger.info(f"Using NetBox site '{group_name}' as WUG group for device {netbox_device.name}")
             
-            # Check if group exists in WUG (manual creation required if not found)
+            # Recursively search for group in WUG hierarchy
             try:
-                groups = client.get_device_groups()
-                group_exists = any(g.get('name') == group_name for g in groups)
-                if not group_exists:
-                    logger.warning(f"Group '{group_name}' does not exist in WUG. Please create it manually in WhatsUp Gold under 'My Network'. Device will be created without group assignment.")
+                found_group = client.find_group_recursive(group_name)
+                if not found_group:
+                    logger.warning(f"Group '{group_name}' does not exist in WUG. Please create it manually in WhatsUp Gold. Device will be created without group assignment.")
                     group_name = None  # Don't try to assign to non-existent group
+                else:
+                    logger.info(f"Found group '{group_name}' in WUG (ID: {found_group.get('id')})")
             except Exception as e:
                 logger.warning(f"Could not verify group '{group_name}' in WUG: {e}. Proceeding without group assignment.")
         

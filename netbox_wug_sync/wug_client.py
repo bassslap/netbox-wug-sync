@@ -513,6 +513,32 @@ class WUGAPIClient:
         except Exception as e:
             raise WUGAPIException(f"Failed to get device groups: {str(e)}")
     
+    def find_group_recursive(self, group_name: str) -> Optional[Dict]:
+        """
+        Recursively search for a group by name in the entire group hierarchy
+        
+        Args:
+            group_name: Name of the group to find
+            
+        Returns:
+            Group dictionary if found, None otherwise
+        """
+        try:
+            groups = self.get_device_groups()
+            
+            # Search all groups (flat list includes nested groups)
+            for group in groups:
+                if group.get('name') == group_name:
+                    logger.info(f"Found group '{group_name}' with ID {group.get('id')}")
+                    return group
+            
+            logger.warning(f"Group '{group_name}' not found in WUG hierarchy")
+            return None
+            
+        except Exception as e:
+            logger.error(f"Failed to search for group '{group_name}': {e}")
+            return None
+    
     def get_group_path(self, group_name: str) -> Optional[str]:
         """
         Get the full hierarchical path for a group by walking up the parent chain
