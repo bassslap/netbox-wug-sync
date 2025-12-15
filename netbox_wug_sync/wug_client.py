@@ -1228,6 +1228,7 @@ class WUGAPIClient:
                 # Add group assignment - WUG will place device in group if it exists
                 groups.append({"name": group_name})
                 logger.info(f"Requesting device placement in WUG group '{group_name}'")
+                logger.debug(f"Group assignment format: {groups}")
             
             # Create device template
             device_template = {
@@ -1267,8 +1268,15 @@ class WUGAPIClient:
             }
             
             # Make PATCH request to create device
-            logger.debug(f"Device creation payload: {body}")
+            logger.info(f"===== DEVICE CREATION REQUEST =====")
+            logger.info(f"Display Name: {display_name}")
+            logger.info(f"IP Address: {ip_address}")
+            logger.info(f"Requested Groups: {groups}")
+            logger.debug(f"Full payload: {json.dumps(body, indent=2)}")
+            logger.info(f"===================================")
+            
             response = self._make_request('PATCH', '/devices/-/config/template', data=body)
+            
             logger.info(f"===== FULL API RESPONSE =====")
             logger.info(f"Response type: {type(response)}")
             logger.info(f"Response: {json.dumps(response, indent=2)}")
@@ -1280,7 +1288,7 @@ class WUGAPIClient:
                 # Check for errors
                 if 'errors' in data and data['errors']:
                     errors = data['errors']
-                    logger.warning(f"Device creation had warnings: {errors}")
+                    logger.warning(f"Device creation had warnings/errors: {json.dumps(errors, indent=2)}")
                 
                 # Get device ID from response
                 if 'idMap' in data and data['idMap']:
