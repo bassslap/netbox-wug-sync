@@ -1348,6 +1348,16 @@ def create_wug_device_from_netbox_data(netbox_device: Device, connection) -> Dic
             group_name = netbox_device.site.name
             logger.info(f"Using NetBox site '{group_name}' as WUG group for device {netbox_device.name}")
         
+        # Pre-load groups cache if needed (outside of device creation to avoid API conflicts)
+        if group_name:
+            try:
+                logger.info("Pre-loading groups cache before device creation...")
+                client.get_group_by_name_cached(group_name)
+                logger.info("Groups cache loaded successfully")
+            except Exception as e:
+                logger.warning(f"Failed to pre-load groups cache: {e}. Will proceed without group assignment.")
+                group_name = None  # Don't try to assign group if cache load failed
+        
         # Create device in WUG
         result = client.create_device(
             display_name=netbox_device.name,
