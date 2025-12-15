@@ -10,6 +10,7 @@ import logging
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
+from django.utils import timezone
 from dcim.models import Site, DeviceType, DeviceRole, Manufacturer, Device
 from dcim.choices import DeviceStatusChoices
 from extras.models import Tag
@@ -1370,16 +1371,44 @@ def create_wug_device_from_netbox_data(netbox_device: Device, connection) -> Dic
         if result.get('success'):
             logger.info(f"Successfully created WUG device: {netbox_device.name} (ID: {result.get('device_id')})")
             
+            # Create or update WUGDevice record for deletion tracking
+            wug_device_id = str(result.get('device_id'))
+            existing_wug_device = WUGDevice.objects.filter(
+                connection=connection,
+                netbox_device=netbox_device
+            ).first()
+            
+            if existing_wug_device:
+                # Update existing record
+                existing_wug_device.wug_id = wug_device_id
+                existing_wug_device.wug_name = netbox_device.name
+                existing_wug_device.wug_ip_address = primary_ip
+                existing_wug_device.last_sync_attempt = timezone.now()
+                existing_wug_device.last_sync_success = timezone.now()
+                existing_wug_device.sync_status = 'success'
+                existing_wug_device.save()
+                logger.info(f"Updated WUGDevice record for {netbox_device.name}")
+            else:
+                # Create new record
+                WUGDevice.objects.create(
+                    connection=connection,
+                    wug_id=wug_device_id,
+                    wug_name=netbox_device.name,
+                    wug_ip_address=primary_ip,
+                    netbox_device=netbox_device,
+                    sync_status='success',
+                    last_sync_attempt=timezone.now(),
+                    last_sync_success=timezone.now()
+                )
+                logger.info(f"Created WUGDevice record for {netbox_device.name}")
+            
             # Update connection's last sync timestamp
-            from django.utils import timezone
             connection.last_sync = timezone.now()
             connection.save(update_fields=['last_sync'])
             
-            # Store the WUG device ID in NetBox custom field or log it
-            # For now, just return the result
             return {
                 'success': True,
-                'device_id': result.get('device_id'),  # Changed from wug_device_id to device_id
+                'device_id': result.get('device_id'),
                 'wug_device_id': result.get('device_id'),
                 'netbox_device_name': netbox_device.name,
                 'ip_address': primary_ip,
