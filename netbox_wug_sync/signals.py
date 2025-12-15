@@ -158,7 +158,33 @@ def device_deleted_handler(sender, instance, **kwargs):
         wug_devices = WUGDevice.objects.filter(netbox_device=instance)
         
         if not wug_devices.exists():
-            logger.debug(f"No WUG devices found for deleted NetBox device {instance.name}")
+            logger.warning(f"No WUGDevice records found for {instance.name}. Attempting fallback deletion by device name.")
+            # Fallback: Try to find and delete by device name in WUG
+            try:
+                connections = WUGConnection.objects.filter(is_active=True)
+                for connection in connections:
+                    client = WUGAPIClient(
+                        host=connection.host,
+                        port=connection.port,
+                        username=connection.username,
+                        password=connection.password,
+                        use_ssl=connection.use_ssl,
+                        verify_ssl=connection.verify_ssl
+                    )
+                    # Search WUG for device by name
+                    try:
+                        devices = client.get_devices()
+                        for device in devices:
+                            if device.get('name') == instance.name:
+                                device_id = device.get('id')
+                                logger.info(f"Found {instance.name} in WUG with ID {device_id}, deleting...")
+                                client.delete_device(device_id)
+                                logger.info(f"Successfully deleted {instance.name} from WUG (fallback method)")
+                                break
+                    except Exception as e:
+                        logger.error(f"Fallback deletion search failed: {e}")
+            except Exception as e:
+                logger.error(f"Fallback deletion failed for {instance.name}: {e}")
             return
         
         logger.info(f"NetBox device deleted: {instance.name}, removing {wug_devices.count()} device(s) from WUG")
