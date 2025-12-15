@@ -72,6 +72,11 @@ class WUGAPIClient:
         # Authentication token
         self._token = None
         self._token_expires = None
+        
+        # Cache for device groups (name -> group dict)
+        self._groups_cache = {}
+        self._groups_cache_time = None
+        self._groups_cache_ttl = 300  # Cache for 5 minutes
     
     def __enter__(self):
         """Context manager entry"""
@@ -512,6 +517,38 @@ class WUGAPIClient:
             raise
         except Exception as e:
             raise WUGAPIException(f"Failed to get device groups: {str(e)}")
+    
+    def get_group_by_name_cached(self, group_name: str) -> Optional[Dict]:
+        """
+        Get a device group by name with caching
+        
+        Args:
+            group_name: Name of the group to find
+            
+        Returns:
+            Group dictionary or None if not found
+        """
+        import time
+        
+        # Check if cache needs refresh
+        current_time = time.time()
+        if (self._groups_cache_time is None or 
+            (current_time - self._groups_cache_time) > self._groups_cache_ttl):
+            
+            logger.info("Refreshing groups cache...")
+            try:
+                all_groups = self.get_device_groups()
+                # Build name -> group dict
+                self._groups_cache = {g.get('name'): g for g in all_groups if g.get('name')}
+                self._groups_cache_time = current_time
+                logger.info(f"Cached {len(self._groups_cache)} groups")
+            except Exception as e:
+                logger.error(f"Failed to refresh groups cache: {e}")
+                # Use stale cache if available
+                if not self._groups_cache:
+                    return None
+        
+        return self._groups_cache.get(group_name)
     
     def find_group_recursive(self, group_name: str) -> Optional[Dict]:
         """
@@ -1224,9 +1261,20 @@ class WUGAPIClient:
             # Prepare groups array - need to find group ID by name
             groups = []
             
-            # TEMPORARY: Skip group assignment to test if that's causing the 500 error
-            logger.warning(f"TEMPORARILY SKIPPING GROUP ASSIGNMENT TO DEBUG 500 ERROR")
-            logger.info(f"Device: {display_name}, IP: {ip_address}, Requested group: {group_name}")
+            logger.info(f"Starting device creation for '{display_name}' with IP '{ip_address}'")
+            
+            if group_name:
+                logger.info(f"Looking up group '{group_name}' using cache...")
+                matching_group = self.get_group_by_name_cached(group_name)
+                
+                if matching_group:
+                    group_id = matching_group.get('id')
+                    groups.append({"id": group_id})
+                    logger.info(f"Found group '{group_name}' with ID: {group_id}")
+                else:
+                    logger.warning(f"Group '{group_name}' not found in cache, device will go to default location")
+            else:
+                logger.info("No group specified, device will go to default location")
             
             # Create device template
             device_template = {
