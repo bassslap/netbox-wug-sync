@@ -33,6 +33,8 @@ def device_saved_handler(sender, instance, created, **kwargs):
     Removes device from WUG if status changed to non-active.
     """
     try:
+        print(f"========== SIGNAL HANDLER CALLED: {getattr(instance, 'name', 'unknown')} ==========", flush=True)
+        logger.warning(f"========== SIGNAL HANDLER: {getattr(instance, 'name', 'unknown')} ==========")
         logger.debug(f"Device signal triggered for {getattr(instance, 'name', 'unknown')} - created: {created}")
         
         # Additional safety: ensure instance is a proper Device object

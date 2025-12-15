@@ -73,8 +73,9 @@ class WUGAPIClient:
         self._token = None
         self._token_expires = None
         
-        # Cache for device groups (name -> group dict)
+        # Cache for device groups (name -> group dict and ID -> group dict)
         self._groups_cache = {}
+        self._groups_cache_by_id = {}
         self._groups_cache_time = None
         self._groups_cache_ttl = 300  # Cache for 5 minutes
     
@@ -518,6 +519,33 @@ class WUGAPIClient:
         except Exception as e:
             raise WUGAPIException(f"Failed to get device groups: {str(e)}")
     
+    def build_group_path(self, group: Dict, groups_dict: Dict[str, Dict]) -> str:
+        """
+        Build the full path to a group by traversing parent relationships
+        
+        Args:
+            group: The group dictionary
+            groups_dict: Dictionary mapping group IDs to group objects
+            
+        Returns:
+            Full path like 'DATA_CENTERS\\CH_DC' or just group name if no parent
+        """
+        path_parts = [group.get('name')]
+        current_group = group
+        
+        # Traverse up to find all parents
+        while current_group.get('parentGroupId') and current_group.get('parentGroupId') not in ['0', '']:
+            parent_id = current_group.get('parentGroupId')
+            if parent_id in groups_dict:
+                parent_group = groups_dict[parent_id]
+                path_parts.insert(0, parent_group.get('name'))
+                current_group = parent_group
+            else:
+                break
+        
+        # Join with backslash (Windows path separator for WUG)
+        return '\\'.join(path_parts)
+    
     def get_group_by_name_cached(self, group_name: str) -> Optional[Dict]:
         """
         Get a device group by name with caching
@@ -535,20 +563,86 @@ class WUGAPIClient:
         if (self._groups_cache_time is None or 
             (current_time - self._groups_cache_time) > self._groups_cache_ttl):
             
-            logger.info("Refreshing groups cache...")
+            logger.warning("Refreshing groups cache...")
             try:
                 all_groups = self.get_device_groups()
-                # Build name -> group dict
+                # Build name -> group dict (by name)
                 self._groups_cache = {g.get('name'): g for g in all_groups if g.get('name')}
+                # Also build ID -> group dict for path building
+                self._groups_cache_by_id = {g.get('id'): g for g in all_groups if g.get('id')}
                 self._groups_cache_time = current_time
-                logger.info(f"Cached {len(self._groups_cache)} groups")
+                logger.warning(f"Cached {len(self._groups_cache)} groups")
+                # Log first few group names for debugging
+                sample_names = list(self._groups_cache.keys())[:10]
+                logger.warning(f"Sample group names in cache: {sample_names}")
             except Exception as e:
                 logger.error(f"Failed to refresh groups cache: {e}")
                 # Use stale cache if available
                 if not self._groups_cache:
                     return None
         
-        return self._groups_cache.get(group_name)
+        result = self._groups_cache.get(group_name)
+        logger.warning(f"Cache lookup for '{group_name}': {'FOUND' if result else 'NOT FOUND'}")
+        return result
+    
+    def _move_device_to_group(self, device_id: int, group_id: int, group_name: str) -> bool:
+        """
+        Move a device to a specific group (works for nested groups)
+        Uses the device group membership endpoint
+        
+        Args:
+            device_id: WUG device ID
+            group_id: Target group ID
+            group_name: Target group name (for logging)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            logger.info(f"Moving device {device_id} to group '{group_name}' (ID: {group_id})")
+            
+            # Try approach 1: PATCH device with group membership
+            # Endpoint: /api/v1/devices/{deviceId}/group-membership
+            body = {
+                "groupIds": [group_id]
+            }
+            
+            try:
+                update_response = self._make_request('PATCH', f'/devices/{device_id}/group-membership', data=body)
+                if update_response and 'data' in update_response:
+                    logger.info(f"Successfully moved device {device_id} to group '{group_name}' using group-membership endpoint")
+                    return True
+            except Exception as e1:
+                logger.warning(f"group-membership endpoint failed: {e1}")
+                
+                # Try approach 2: Add device to group using group endpoint with POST
+                # Endpoint: /api/v1/device-groups/{groupId}/devices
+                try:
+                    body2 = {
+                        "deviceIds": [device_id]
+                    }
+                    update_response2 = self._make_request('POST', f'/device-groups/{group_id}/devices', data=body2)
+                    if update_response2 and 'data' in update_response2:
+                        logger.info(f"Successfully moved device {device_id} to group '{group_name}' using POST to group devices endpoint")
+                        return True
+                except Exception as e2:
+                    logger.warning(f"POST to group devices endpoint failed: {e2}")
+                    
+                    # Try approach 3: PUT device to group
+                    try:
+                        update_response3 = self._make_request('PUT', f'/device-groups/{group_id}/devices', data=body2)
+                        if update_response3 and 'data' in update_response3:
+                            logger.info(f"Successfully moved device {device_id} to group '{group_name}' using PUT to group devices endpoint")
+                            return True
+                    except Exception as e3:
+                        logger.error(f"All group membership approaches failed. Endpoint 1: {e1}, POST: {e2}, PUT: {e3}")
+                        return False
+            
+            return False
+                
+        except Exception as e:
+            logger.error(f"Error moving device {device_id} to group '{group_name}': {e}")
+            return False
     
     def find_group_recursive(self, group_name: str) -> Optional[Dict]:
         """
@@ -1234,7 +1328,7 @@ class WUGAPIClient:
                      device_type: str = "Network Device", primary_role: str = "Device",
                      poll_interval: int = 60, group_name: str = None) -> Dict:
         """
-        Create a new device in WhatsUp Gold
+        Create a new device in WhatsUp Gold using the newDevice endpoint
         
         Args:
             display_name: Display name for the device
@@ -1252,31 +1346,37 @@ class WUGAPIClient:
             WUGAPIException: For API errors
         """
         try:
-            logger.info(f"Creating device '{display_name}' with IP {ip_address} in group '{group_name or 'My Network'}'")
+            logger.info(f"Creating device '{display_name}' with IP {ip_address} in group '{group_name or 'default'}'")
             
             # Use display_name as hostname if not provided
             if hostname is None:
                 hostname = display_name
             
-            # Prepare groups array - need to find group ID by name
+            # Look up group - handle both top-level and nested groups
             groups = []
-            
-            logger.info(f"Starting device creation for '{display_name}' with IP '{ip_address}'")
             
             if group_name:
                 logger.info(f"Looking up group '{group_name}' using cache...")
                 matching_group = self.get_group_by_name_cached(group_name)
                 
                 if matching_group:
-                    group_id = matching_group.get('id')
-                    groups.append({"id": group_id})
-                    logger.info(f"Found group '{group_name}' with ID: {group_id}")
+                    group_id = int(matching_group.get('id'))
+                    parent_id = matching_group.get('parentGroupId', '')
+                    
+                    # Check if nested group
+                    if parent_id and parent_id != '' and int(parent_id) != 0:
+                        logger.warning(f"Group '{group_name}' (ID: {group_id}) is NESTED under parent {parent_id}")
+                        logger.warning(f"WUG API does not support nested groups - device will go to ALL_NETWORKS")
+                        logger.warning(f"You must manually move device to '{group_name}' in WUG UI after creation")
+                        # Don't add to groups array - nested groups don't work
+                    else:
+                        # Top-level group - this will work
+                        groups.append({"name": group_name})
+                        logger.info(f"Using TOP-LEVEL group '{group_name}' (ID: {group_id})")
                 else:
-                    logger.warning(f"Group '{group_name}' not found in cache, device will go to default location")
-            else:
-                logger.info("No group specified, device will go to default location")
+                    logger.warning(f"Group '{group_name}' not found in cache")
             
-            # Create device template
+            # Build device template payload
             device_template = {
                 "displayName": display_name,
                 "deviceType": device_type,
@@ -1307,17 +1407,16 @@ class WUGAPIClient:
                 "groups": groups
             }
             
-            # Create request body with correct structure
             body = {
                 "options": ["all"],
                 "templates": [device_template]
             }
             
-            # Make PATCH request to create device
             logger.info(f"===== DEVICE CREATION REQUEST =====")
+            logger.info(f"Endpoint: PATCH /devices/-/config/template")
             logger.info(f"Display Name: {display_name}")
             logger.info(f"IP Address: {ip_address}")
-            logger.info(f"Requested Groups: {groups}")
+            logger.info(f"Groups: {groups}")
             logger.debug(f"Full payload: {json.dumps(body, indent=2)}")
             logger.info(f"===================================")
             
@@ -1353,15 +1452,14 @@ class WUGAPIClient:
                         'errors': data.get('errors', [])
                     }
                 else:
-                    logger.error(f"Device creation response missing device ID or idMap. Full data keys: {list(data.keys())}")
-                    logger.error(f"Full data: {json.dumps(data, indent=2)}")
+                    logger.error(f"Device creation response missing device ID. Response keys: {list(data.keys())}")
                     return {
                         'success': False,
                         'message': 'Device creation response missing device ID',
                         'response_data': data
                     }
             else:
-                logger.error(f"Invalid device creation response (no 'data' key): {response}")
+                logger.error(f"Invalid device creation response (no 'data' key)")
                 return {
                     'success': False,
                     'message': 'Invalid API response format'
