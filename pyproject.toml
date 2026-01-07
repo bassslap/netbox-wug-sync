@@ -9,7 +9,7 @@ build-backend = "setuptools.build_meta"
 name = "netbox-wug-sync"
 version = "0.1.0"
 authors = [
-    {name = "NetBox Admin", email = "admin@example.com"},
+    {name = "Bryan", email = "bryan@example.com"},
 ]
 description = "NetBox plugin for synchronizing devices with WhatsUp Gold"
 readme = "README.md"
@@ -46,10 +46,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/netbox-wug-sync"
-Documentation = "https://github.com/yourusername/netbox-wug-sync/wiki"
-Repository = "https://github.com/yourusername/netbox-wug-sync"
-"Bug Tracker" = "https://github.com/yourusername/netbox-wug-sync/issues"
+Homepage = "https://github.com/bassslap/netbox-wug-sync"
+Documentation = "https://github.com/bassslap/netbox-wug-sync/wiki"
+Repository = "https://github.com/bassslap/netbox-wug-sync"
+"Bug Tracker" = "https://github.com/bassslap/netbox-wug-sync/issues"
 
 [tool.setuptools.packages.find]
 include = ["netbox_wug_sync*"]
